@@ -116,11 +116,32 @@ fun CascadeScreen(vm: AppViewModel) {
                 vm.grafanaBaseURL.isEmpty() -> EmptyState("Grafana Not Configured", "Set Grafana URL in Settings")
                 segs.isEmpty() && loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 segs.isEmpty() && error != null -> EmptyState("Failed to Load", error!!)
-                else -> PullToRefreshBox(isRefreshing = loading, onRefresh = { scope.launch { load() } }) {
-                    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(segs) { SegCard(it) }
-                        item(key = "egress") { EgressCard(legs) }
-                        item(key = "history") { HistoryCard(history) }
+                else -> BoxWithConstraints {
+                    // On the unfolded / tablet width show the two segment cards side by side at ~folded
+                    // width (capped), instead of stretching each across the whole screen.
+                    val wide = maxWidth >= 600.dp
+                    val cardW = ((maxWidth - 36.dp) / 2).coerceAtMost(400.dp)
+                    val groupW = cardW * 2 + 12.dp
+                    PullToRefreshBox(isRefreshing = loading, onRefresh = { scope.launch { load() } }) {
+                        LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (wide) {
+                                item(key = "segrow") {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
+                                        segs.forEach { Box(Modifier.width(cardW)) { SegCard(it) } }
+                                    }
+                                }
+                            } else {
+                                items(segs) { SegCard(it) }
+                            }
+                            item(key = "egress") {
+                                if (wide) Box(Modifier.fillMaxWidth(), Alignment.Center) { Box(Modifier.width(groupW)) { EgressCard(legs) } }
+                                else EgressCard(legs)
+                            }
+                            item(key = "history") {
+                                if (wide) Box(Modifier.fillMaxWidth(), Alignment.Center) { Box(Modifier.width(groupW)) { HistoryCard(history) } }
+                                else HistoryCard(history)
+                            }
+                        }
                     }
                 }
             }
