@@ -15,7 +15,7 @@ struct CascadeView: View {
         let cascade: MonitorStatus?
     }
     struct Leg: Identifiable { let id = UUID(); let leg: String; let homeRTT, txBytes, limitBytes: Double? }
-    struct Migration: Identifiable { let id = UUID(); let host, from, to: String; let time: Date }
+    struct Migration: Identifiable { let id = UUID(); let host, from, to: String; let time: Date; let reason: String }
 
     @State private var segs: [Seg] = []
     @State private var legs: [Leg] = []
@@ -132,10 +132,13 @@ struct CascadeView: View {
                         pill(m.from.uppercased(), legColor(m.from))
                         Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.secondary)
                         pill(m.to.uppercased(), legColor(m.to))
+                        if !m.reason.isEmpty { pill(reasonText(m.reason), reasonColor(m.reason)) }
                         Spacer()
                         Text(fmtTime(m.time)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
+                Text("stale HS — хэндшейк протух; no route — нет прохода через плечо; link down — линк упал; failback — возврат на приоритетное плечо; boot — старт.")
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         }
     }
@@ -150,6 +153,28 @@ struct CascadeView: View {
             .background(c.opacity(0.18)).foregroundStyle(c).clipShape(Capsule())
     }
     private func legColor(_ l: String) -> Color { l == "sto" ? .green : (l == "ams" ? .orange : (l == "fi" ? .red : .secondary)) }
+
+    // Migration reason (vpn_egress_switch_time reason label): precise on new lines, coarse on legacy.
+    private func reasonText(_ r: String) -> String {
+        switch r {
+        case "stale_handshake": return "stale HS"
+        case "unreachable": return "no route"
+        case "link_down": return "link down"
+        case "failback": return "failback"
+        case "failover": return "failover"
+        case "initial": return "boot"
+        default: return r
+        }
+    }
+    private func reasonColor(_ r: String) -> Color {
+        switch r {
+        case "failback": return .green
+        case "initial": return .blue
+        case "failover": return .orange
+        case "stale_handshake", "unreachable", "link_down": return .red
+        default: return .secondary
+        }
+    }
 
     // Short segment label (part of the title before " · "), resolved from config by host.
     private func segLabel(_ host: String) -> String {
@@ -214,7 +239,7 @@ struct CascadeView: View {
             }
             history = sw.compactMap { r -> Migration? in
                 guard let f = r.labels["from"], let t = r.labels["to"], let h = r.labels["host"] else { return nil }
-                return Migration(host: h, from: f, to: t, time: Date(timeIntervalSince1970: r.value))
+                return Migration(host: h, from: f, to: t, time: Date(timeIntervalSince1970: r.value), reason: r.labels["reason"] ?? "")
             }.sorted { $0.time > $1.time }
             errText = nil
         } catch let e {
