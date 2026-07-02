@@ -35,6 +35,24 @@ private val PENDING = Color(0xFFF8A532)
 private val MAINT = Color(0xFF459BFF)
 private fun legColor(l: String) = when (l) { "sto" -> STO; "ams" -> AMS; "fi" -> FI; else -> Color.Gray }
 
+// Migration reason (from vpn_egress_switch_time reason label): precise on new lines, coarse on legacy.
+private fun reasonText(r: String) = when (r) {
+    "stale_handshake" -> "stale HS"
+    "unreachable" -> "no route"
+    "link_down" -> "link down"
+    "failback" -> "failback"
+    "failover" -> "failover"
+    "initial" -> "boot"
+    else -> r
+}
+private fun reasonColor(r: String) = when (r) {
+    "failback" -> STO
+    "initial" -> MAINT
+    "failover" -> PENDING
+    "stale_handshake", "unreachable", "link_down" -> DOWN
+    else -> Color.Gray
+}
+
 private const val CASCADE_HINT ="up — активное плечо STO/AMS (чистый Vultr-egress); down — деградация на FI (оба Vultr-плеча недоступны) или несвежий handshake."
 private const val EGRESS_HINT = "Лимит Vultr 2 ТБ на инстанс (STO и AMS отдельно), считается outbound (tx), сброс 1-го числа. FI — cold standby, квота не отслеживается."
 
@@ -44,7 +62,7 @@ private data class Seg(
     val healthy: Boolean, val cascade: MonitorStatus?
 )
 private data class Leg(val leg: String, val homeRtt: Double?, val txBytes: Double?, val limitBytes: Double?)
-private data class Migration(val host: String, val label: String, val from: String, val to: String, val epoch: Long)
+private data class Migration(val host: String, val label: String, val from: String, val to: String, val epoch: Long, val reason: String = "")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,7 +115,7 @@ fun CascadeScreen(vm: AppViewModel) {
                 val f = r.labels["from"]; val t = r.labels["to"]; val h = r.labels["host"]
                 if (f == null || t == null || h == null) null else {
                     val label = vm.cascadeSegments.firstOrNull { it.host == h }?.title?.substringBefore(" · ") ?: h
-                    Migration(h, label, f, t, r.value.toLong())
+                    Migration(h, label, f, t, r.value.toLong(), r.labels["reason"] ?: "")
                 }
             }.sortedByDescending { it.epoch }
             error = null
@@ -248,11 +266,18 @@ private fun HistoryCard(history: List<Migration>) {
                         Pill(m.from.uppercase(), legColor(m.from))
                         Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Pill(m.to.uppercase(), legColor(m.to))
+                        if (m.reason.isNotEmpty()) Pill(reasonText(m.reason), reasonColor(m.reason))
                         Spacer(Modifier.weight(1f))
                         Text(fmt.format(Date(m.epoch * 1000)), style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                Text(
+                    "stale HS — хэндшейк протух; no route — нет прохода через плечо; " +
+                        "link down — линк упал; failback — возврат на приоритетное плечо; boot — старт.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
