@@ -2,6 +2,8 @@ package com.eva3si0n.infralab.ui.cascade
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -142,6 +144,10 @@ fun CascadeScreen(vm: AppViewModel) {
                     val groupW = cardW * 2 + 12.dp
                     PullToRefreshBox(isRefreshing = loading, onRefresh = { scope.launch { load() } }) {
                         LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            item(key = "decision") {
+                                if (wide) Box(Modifier.fillMaxWidth(), Alignment.Center) { Box(Modifier.width(groupW)) { DecisionCard(segs, history) } }
+                                else DecisionCard(segs, history)
+                            }
                             if (wide) {
                                 item(key = "segrow") {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
@@ -165,6 +171,78 @@ fun CascadeScreen(vm: AppViewModel) {
             }
         }
     }
+}
+
+// Top summary: current route decision per segment, swipeable left/right (Wired / Mobile).
+@Composable
+private fun DecisionCard(segs: List<Seg>, history: List<Migration>) {
+    if (segs.isEmpty()) return
+    val pager = rememberPagerState(pageCount = { segs.size })
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Cascade decision", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.weight(1f))
+                Text(segs.getOrNull(pager.currentPage)?.title?.substringBefore(" · ") ?: "",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            HorizontalPager(state = pager) { page -> DecisionPage(segs[page], history) }
+            if (segs.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                Text(segs.indices.joinToString(" ") { if (it == pager.currentPage) "●" else "○" },
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                "Primary healthy — маршрут на приоритетном STO; Failover from STO — ушли с primary (справа причина); " +
+                    "Both Vultr legs down — оба Vultr-плеча недоступны, работаем на FI.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun DecisionPage(s: Seg, history: List<Migration>) {
+    val order = listOf("sto", "ams", "fi")
+    val cur = s.activeLeg
+    val curRtt = s.rtt[cur]
+    val alt = order.firstOrNull { it != cur && it != "fi" }
+    val cold = if (cur != "fi") "fi" else null
+    fun delta(leg: String?): String {
+        val r = leg?.let { s.rtt[it] }
+        if (r == null || curRtt == null) return ""
+        val d = (r - curRtt).toInt(); return (if (d >= 0) "+$d" else "$d") + " ms"
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Route", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        DecisionRow("Current", cur, null)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Reason", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(104.dp))
+            Text(decisionReason(s, history), style = MaterialTheme.typography.bodyMedium)
+        }
+        if (alt != null) DecisionRow("Alternative", alt, delta(alt))
+        if (cold != null) DecisionRow("Cold standby", cold, delta(cold))
+    }
+}
+
+@Composable
+private fun DecisionRow(label: String, leg: String, delta: String?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(104.dp))
+        Pill(leg.uppercase(), legColor(leg))
+        if (!delta.isNullOrEmpty()) Text(delta, style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+// Reason the route currently sits on its active leg.
+private fun decisionReason(s: Seg, history: List<Migration>): String {
+    val cur = s.activeLeg
+    if (cur == "sto") return if (s.healthy) "Primary healthy" else "On primary (degraded)"
+    if (cur == "fi") return "Both Vultr legs down"
+    val last = history.filter { it.host == s.host && it.to == cur }.maxByOrNull { it.epoch }?.reason
+    return if (last in listOf("stale_handshake", "unreachable", "link_down"))
+        "Failover from STO · ${reasonText(last!!)}" else "Failover from STO"
 }
 
 @Composable

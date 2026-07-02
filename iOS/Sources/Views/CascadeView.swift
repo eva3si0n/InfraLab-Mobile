@@ -47,6 +47,7 @@ struct CascadeView: View {
 
     private var list: some View {
         List {
+            decisionSection
             ForEach(segs) { segmentSection($0) }
             egressSection
             historySection
@@ -148,6 +149,67 @@ struct CascadeView: View {
 
     private func row(_ k: String, _ v: String) -> some View {
         HStack { Text(k).font(.subheadline); Spacer(); Text(v).font(.subheadline.monospacedDigit()) }
+    }
+
+    // Top summary: current route decision per segment, swipeable left/right (Wired / Mobile).
+    @ViewBuilder private var decisionSection: some View {
+        Section {
+            TabView {
+                ForEach(segs) { s in decisionPage(s).tag(s.id) }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .frame(height: 210)
+            .listRowInsets(EdgeInsets())
+        } header: {
+            Text("Cascade decision")
+        } footer: {
+            Text("Primary healthy — маршрут на приоритетном STO; Failover from STO — ушли с primary (справа причина); Both Vultr legs down — оба Vultr-плеча недоступны, работаем на FI.")
+        }
+    }
+
+    private func decisionPage(_ s: Seg) -> some View {
+        let order = ["sto", "ams", "fi"]
+        let cur = s.activeLeg
+        let curRtt = s.rtt[cur]
+        let alt = order.first { $0 != cur && $0 != "fi" }
+        let cold: String? = cur != "fi" ? "fi" : nil
+        func delta(_ leg: String?) -> String {
+            guard let leg, let r = s.rtt[leg], let c = curRtt else { return "" }
+            let d = Int((r - c).rounded()); return (d >= 0 ? "+\(d)" : "\(d)") + " ms"
+        }
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Route").font(.caption).foregroundStyle(.secondary)
+            decisionRow("Current", cur, nil)
+            HStack(spacing: 8) {
+                Text("Reason").font(.subheadline).frame(width: 110, alignment: .leading)
+                Text(decisionReason(s)).font(.subheadline); Spacer()
+            }
+            if let alt { decisionRow("Alternative", alt, delta(alt)) }
+            if let cold { decisionRow("Cold standby", cold, delta(cold)) }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder private func decisionRow(_ label: String, _ leg: String, _ delta: String?) -> some View {
+        HStack(spacing: 8) {
+            Text(label).font(.subheadline).frame(width: 110, alignment: .leading)
+            pill(leg.uppercased(), legColor(leg))
+            if let delta, !delta.isEmpty { Text(delta).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+            Spacer()
+        }
+    }
+
+    private func decisionReason(_ s: Seg) -> String {
+        let cur = s.activeLeg
+        if cur == "sto" { return s.healthy ? "Primary healthy" : "On primary (degraded)" }
+        if cur == "fi" { return "Both Vultr legs down" }
+        let last = history.filter { $0.host == s.host && $0.to == cur }.max { $0.time < $1.time }?.reason
+        if let last, ["stale_handshake", "unreachable", "link_down"].contains(last) {
+            return "Failover from STO · \(reasonText(last))"
+        }
+        return "Failover from STO"
     }
 
     @ViewBuilder private func pill(_ text: String, _ c: Color) -> some View {
