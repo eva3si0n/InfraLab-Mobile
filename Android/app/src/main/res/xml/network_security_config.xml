@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Все сервисы (kuma/grafana/...) за реальным Let's Encrypt через Caddy DNS-01.
+     Ходим только по https → cleartext запрещён полностью. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

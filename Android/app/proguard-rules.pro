@@ -1,0 +1,4 @@
+-keep class com.eva3si0n.infralab.data.** { *; }
+-keepattributes *Annotation*
+-dontwarn okhttp3.**
+-dontwarn okio.**

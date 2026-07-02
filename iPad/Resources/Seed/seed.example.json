@@ -1,0 +1,14 @@
+{
+  "kumaBaseURL": "https://kuma.example.com",
+  "kumaSlug": "default",
+  "kumaAPIKey": "",
+  "grafanaBaseURL": "https://grafana.example.com",
+  "grafanaDatasourceUID": "prometheus",
+  "grafanaToken": "",
+  "homePageBaseURL": "https://home.example.com",
+  "cascadeSegments": [
+    {"host": "node-a", "title": "Wired · FQDN хоста", "kumaGroup": "Node A", "cascadeMatch": "node-a"},
+    {"host": "node-b", "title": "Mobile · FQDN хоста", "kumaGroup": "Node B", "cascadeMatch": "node-b"}
+  ],
+  "cascadeTrafficHosts": {"sto": "egress-a", "ams": "egress-b"}
+}
