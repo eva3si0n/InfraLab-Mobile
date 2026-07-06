@@ -262,7 +262,9 @@ struct CascadeView: View {
         return String(format: "%.1f %@", v, u[i])
     }
     private func fmtTime(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "MMM d, HH:mm"; return f.string(from: d)
+        let f = DateFormatter(); f.dateFormat = "MMM d, HH:mm"
+        f.timeZone = TimeZone(identifier: "Asia/Yekaterinburg")   // MSK+2 (UTC+5), not device-local
+        return f.string(from: d)
     }
 
     private func load() async {

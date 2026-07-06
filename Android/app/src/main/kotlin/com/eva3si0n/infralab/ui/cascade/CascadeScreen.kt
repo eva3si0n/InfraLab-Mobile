@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 // VPN Cascade — per-segment egress state + Kuma cascade health + egress-leg traffic + migration history.
 // Data: Prometheus via Grafana proxy (vm.promInstant) + Kuma status page (vm.monitors).
@@ -328,7 +329,11 @@ private fun EgressCard(legs: List<Leg>) {
 
 @Composable
 private fun HistoryCard(history: List<Migration>) {
-    val fmt = remember { SimpleDateFormat("MMM d, HH:mm", Locale.US) }
+    val fmt = remember {
+        SimpleDateFormat("MMM d, HH:mm", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Yekaterinburg")   // MSK+2 (UTC+5), not device-local
+        }
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("History · primary-leg migrations", style = MaterialTheme.typography.titleSmall)
