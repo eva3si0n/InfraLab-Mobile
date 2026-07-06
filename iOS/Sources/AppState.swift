@@ -313,17 +313,25 @@ final class AppState: ObservableObject {
 
     struct SwitchResult: Codable { let ok: Bool; let override: String?; let active: String?; let error: String? }
 
-    /// Fetch manual-override state from the vpncascade service: host → forced leg (sto/ams).
-    /// Empty when nothing is pinned or the service isn't configured. Never throws (best-effort).
-    func fetchOverrides() async -> [String: String] {
+    struct SegAux { let override: String; let manual: Bool; let tx: [Double]; let rx: [Double] }
+
+    /// Fetch per-segment extras from the vpncascade service (manual-override state + WG
+    /// throughput history for the sparkline). Best-effort; empty on any failure.
+    func fetchCascadeAux() async -> [String: SegAux] {
         let base = vpncascadeBaseURL.trimmingCharacters(in: .init(charactersIn: "/"))
         guard !base.isEmpty, let url = URL(string: "\(base)/api/cascade") else { return [:] }
-        struct Resp: Codable { struct S: Codable { let host: String; let override: String?; let manual: Bool? }; let segments: [S] }
+        struct Resp: Codable {
+            struct S: Codable { let host: String; let override: String?; let manual: Bool?; let txSeries: [Double]?; let rxSeries: [Double]? }
+            let segments: [S]
+        }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             let r = try JSONDecoder().decode(Resp.self, from: data)
-            var out: [String: String] = [:]
-            for s in r.segments where (s.manual ?? false) { out[s.host] = s.override ?? "" }
+            var out: [String: SegAux] = [:]
+            for s in r.segments {
+                out[s.host] = SegAux(override: s.override ?? "", manual: s.manual ?? false,
+                                     tx: s.txSeries ?? [], rx: s.rxSeries ?? [])
+            }
             return out
         } catch { return [:] }
     }

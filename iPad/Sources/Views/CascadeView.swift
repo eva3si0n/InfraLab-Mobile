@@ -28,6 +28,7 @@ struct CascadeView: View {
     @State private var switching = false
     @State private var switchNote: String?
     @State private var manual: [String: String] = [:]   // host → forced leg while in manual mode
+    @State private var series: [String: (tx: [Double], rx: [Double])] = [:]  // host → WG history
 
     private let cascadeHint = "up — активное плечо STO/AMS (чистый Vultr-egress); down — деградация на FI (оба Vultr-плеча недоступны) или несвежий handshake."
     private let egressHint = "Лимит Vultr 2 ТБ на инстанс (STO и AMS отдельно), считается outbound (tx), сброс 1-го числа. FI — cold standby, квота не отслеживается."
@@ -119,6 +120,10 @@ struct CascadeView: View {
             }
             if let tx = s.txBps, let rx = s.rxBps {
                 row("Throughput WG", "↑ \(fmtBps(tx))  ↓ \(fmtBps(rx))")
+            }
+            if let ser = series[s.host], ser.tx.count > 1 {
+                Sparkline(tx: ser.tx, rx: ser.rx)
+                Text("↑ tx · ↓ rx · 1h").font(.caption2).foregroundStyle(.secondary)
             }
             row("RTT STO", s.rtt["sto"].map { "\(Int($0.rounded())) ms" } ?? "—")
             row("RTT AMS", s.rtt["ams"].map { "\(Int($0.rounded())) ms" } ?? "—")
@@ -364,6 +369,32 @@ struct CascadeView: View {
         } catch let e {
             errText = e.localizedDescription
         }
-        manual = await appState.fetchOverrides()
+        let aux = await appState.fetchCascadeAux()
+        manual = aux.filter { $0.value.manual }.mapValues { $0.override }
+        series = aux.mapValues { (tx: $0.tx, rx: $0.rx) }
+    }
+}
+
+// Compact WG throughput sparkline: tx (green, ↑) + rx (blue, ↓), shared scale.
+struct Sparkline: View {
+    let tx: [Double]; let rx: [Double]
+    var body: some View {
+        let mx = max((tx + rx).max() ?? 1, 1)
+        GeometryReader { geo in
+            ZStack {
+                path(tx, geo.size, mx).stroke(Color.green, style: .init(lineWidth: 1.5, lineJoin: .round))
+                path(rx, geo.size, mx).stroke(Color.blue, style: .init(lineWidth: 1.5, lineJoin: .round))
+            }
+        }
+        .frame(height: 34)
+    }
+    private func path(_ s: [Double], _ size: CGSize, _ mx: Double) -> Path {
+        var p = Path(); guard s.count > 1 else { return p }
+        for (i, v) in s.enumerated() {
+            let x = size.width * CGFloat(i) / CGFloat(s.count - 1)
+            let y = size.height * (1 - CGFloat(max(0, v) / mx))
+            if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+        }
+        return p
     }
 }

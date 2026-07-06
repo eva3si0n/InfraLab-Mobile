@@ -242,14 +242,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return res
     }
 
-    // Manual-override state from the vpncascade service: host → forced leg (only manual segments).
-    // Best-effort; empty on any failure or when the service isn't configured.
-    suspend fun fetchOverrides(): Map<String, String> {
+    // Per-segment extras from the vpncascade service (override state + WG history for the
+    // sparkline), keyed by host. Best-effort; empty on any failure or when unconfigured.
+    suspend fun fetchCascadeAux(): Map<String, SegAux> {
         val base = vpncascadeBaseURL.trimEnd('/')
         if (base.isEmpty()) return emptyMap()
         return runCatching {
             val d = api.decode<OverridePayload>(api.get("$base/api/cascade"))
-            d.segments.filter { it.manual }.associate { it.host to (it.override ?: "") }
+            d.segments.associate { it.host to SegAux(it.override ?: "", it.manual, it.txSeries, it.rxSeries) }
         }.getOrDefault(emptyMap())
     }
 

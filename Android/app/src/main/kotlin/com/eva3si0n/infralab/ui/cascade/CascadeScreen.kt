@@ -16,6 +16,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -79,6 +81,7 @@ fun CascadeScreen(vm: AppViewModel) {
     var switching by remember { mutableStateOf(false) }
     var switchNote by remember { mutableStateOf<String?>(null) }
     var manual by remember { mutableStateOf<Map<String, String>>(emptyMap()) }  // host → forced leg
+    var series by remember { mutableStateOf<Map<String, Pair<List<Double>, List<Double>>>>(emptyMap()) }  // host → tx,rx
     val showForce = vm.hasSwitchToken()
     val scope = rememberCoroutineScope()
 
@@ -127,7 +130,9 @@ fun CascadeScreen(vm: AppViewModel) {
                 }
             }.sortedByDescending { it.epoch }
             error = null
-            manual = vm.fetchOverrides()
+            val aux = vm.fetchCascadeAux()
+            manual = aux.filterValues { it.manual }.mapValues { it.value.override }
+            series = aux.mapValues { it.value.tx to it.value.rx }
         } catch (e: Exception) {
             error = e.message ?: "error"
         } finally {
@@ -175,11 +180,11 @@ fun CascadeScreen(vm: AppViewModel) {
                             if (wide) {
                                 item(key = "segrow") {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
-                                        segs.forEach { Box(Modifier.width(cardW)) { SegCard(it, showForce) { seg, leg, label -> pending = Triple(seg, leg, label) } } }
+                                        segs.forEach { Box(Modifier.width(cardW)) { SegCard(it, showForce, series[it.host]) { seg, leg, label -> pending = Triple(seg, leg, label) } } }
                                     }
                                 }
                             } else {
-                                items(segs) { SegCard(it, showForce) { seg, leg, label -> pending = Triple(seg, leg, label) } }
+                                items(segs) { SegCard(it, showForce, series[it.host]) { seg, leg, label -> pending = Triple(seg, leg, label) } }
                             }
                             item(key = "egress") {
                                 if (wide) Box(Modifier.fillMaxWidth(), Alignment.Center) { Box(Modifier.width(groupW)) { EgressCard(legs) } }
@@ -302,7 +307,12 @@ private fun decisionReason(s: Seg, history: List<Migration>): String {
 }
 
 @Composable
-private fun SegCard(s: Seg, showForce: Boolean = false, onForce: (String, String, String) -> Unit = { _, _, _ -> }) {
+private fun SegCard(
+    s: Seg,
+    showForce: Boolean = false,
+    spark: Pair<List<Double>, List<Double>>? = null,
+    onForce: (String, String, String) -> Unit = { _, _, _ -> }
+) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(s.title, style = MaterialTheme.typography.titleSmall)
@@ -318,6 +328,13 @@ private fun SegCard(s: Seg, showForce: Boolean = false, onForce: (String, String
             }
             if (s.txBps != null && s.rxBps != null) {
                 KV("Throughput WG", "↑ ${fmtBps(s.txBps)}  ↓ ${fmtBps(s.rxBps)}")
+            }
+            spark?.let { (tx, rx) ->
+                if (tx.size > 1) {
+                    Sparkline(tx, rx, Modifier.fillMaxWidth().height(34.dp))
+                    Text("↑ tx · ↓ rx · 1h", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             KV("RTT STO", s.rtt["sto"]?.let { "${it.toInt()} ms" } ?: "—")
             KV("RTT AMS", s.rtt["ams"]?.let { "${it.toInt()} ms" } ?: "—")
@@ -340,6 +357,26 @@ private fun SegCard(s: Seg, showForce: Boolean = false, onForce: (String, String
             }
             CascadeCard(s)
         }
+    }
+}
+
+// Compact WG throughput sparkline: tx (green, ↑) + rx (blue, ↓), shared scale.
+@Composable
+private fun Sparkline(tx: List<Double>, rx: List<Double>, modifier: Modifier = Modifier) {
+    val mx = ((tx + rx).maxOrNull() ?: 1.0).coerceAtLeast(1.0)
+    Canvas(modifier) {
+        fun draw(data: List<Double>, color: Color) {
+            if (data.size < 2) return
+            val path = Path()
+            data.forEachIndexed { i, v ->
+                val x = size.width * i / (data.size - 1)
+                val y = size.height * (1f - (v.coerceAtLeast(0.0) / mx).toFloat())
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(path, color, style = Stroke(width = 2.5f))
+        }
+        draw(tx, STO)
+        draw(rx, Color(0xFF0A84FF))
     }
 }
 

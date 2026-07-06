@@ -111,12 +111,21 @@ data class SwitchResult(
     val error: String? = null
 )
 
-// Minimal view of GET /api/cascade — just the manual-override state per segment.
+// View of GET /api/cascade — manual-override state + WG throughput history per segment.
 @Serializable
-data class OverrideSeg(val host: String, val override: String? = null, val manual: Boolean = false)
+data class OverrideSeg(
+    val host: String,
+    val override: String? = null,
+    val manual: Boolean = false,
+    val txSeries: List<Double> = emptyList(),
+    val rxSeries: List<Double> = emptyList()
+)
 
 @Serializable
 data class OverridePayload(val segments: List<OverrideSeg> = emptyList())
+
+// Per-segment extras consumed by CascadeScreen (override state + WG sparkline series).
+data class SegAux(val override: String, val manual: Boolean, val tx: List<Double>, val rx: List<Double>)
 
 data class PanelDef(
     val title: String,
