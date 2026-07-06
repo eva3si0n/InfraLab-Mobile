@@ -28,6 +28,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var grafanaBaseURL by mutableStateOf(prefs.grafanaBaseURL); private set
     var grafanaDatasourceUID by mutableStateOf(prefs.grafanaDatasourceUID); private set
     var homePageBaseURL by mutableStateOf(prefs.homePageBaseURL); private set
+    var vpncascadeBaseURL by mutableStateOf(prefs.vpncascadeBaseURL); private set
     var refreshIntervalSecs by mutableStateOf(prefs.refreshIntervalSecs); private set
 
     fun updateKumaBaseURL(v: String) { kumaBaseURL = v; prefs.kumaBaseURL = v }
@@ -35,12 +36,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun updateGrafanaBaseURL(v: String) { grafanaBaseURL = v; prefs.grafanaBaseURL = v }
     fun updateGrafanaDatasourceUID(v: String) { grafanaDatasourceUID = v; prefs.grafanaDatasourceUID = v }
     fun updateHomePageBaseURL(v: String) { homePageBaseURL = v; prefs.homePageBaseURL = v }
+    fun updateVpncascadeBaseURL(v: String) { vpncascadeBaseURL = v; prefs.vpncascadeBaseURL = v }
     fun updateRefreshInterval(v: Long) { refreshIntervalSecs = v; prefs.refreshIntervalSecs = v }
     fun setKumaAPIKey(v: String) { secure.set("kumaAPIKey", v) }
     fun setGrafanaToken(v: String) { secure.set("grafanaToken", v) }
+    fun setSwitchToken(v: String) { secure.set("switchToken", v) }
     fun hasKumaAPIKey() = secure.has("kumaAPIKey")
     fun hasGrafanaToken() = secure.has("grafanaToken")
     fun grafanaToken() = secure.get("grafanaToken")
+    fun hasSwitchToken() = secure.has("switchToken")
+    fun switchToken() = secure.get("switchToken")
 
     // Runtime
     var monitors by mutableStateOf<List<MonitorStatus>>(emptyList()); private set
@@ -74,8 +79,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             s.grafanaBaseURL?.let { updateGrafanaBaseURL(it) }
             s.grafanaDatasourceUID?.takeIf { it.isNotEmpty() }?.let { updateGrafanaDatasourceUID(it) }
             s.homePageBaseURL?.let { updateHomePageBaseURL(it) }
+            s.vpncascadeBaseURL?.let { updateVpncascadeBaseURL(it) }
             s.kumaAPIKey?.takeIf { it.isNotEmpty() }?.let { setKumaAPIKey(it) }
             s.grafanaToken?.takeIf { it.isNotEmpty() }?.let { setGrafanaToken(it) }
+            s.switchToken?.takeIf { it.isNotEmpty() }?.let { setSwitchToken(it) }
         }
     }
 
@@ -221,6 +228,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val base = grafanaBaseURL.trimEnd('/')
         val uid = grafanaDatasourceUID.ifEmpty { "prometheus" }
         return "$base/api/datasources/proxy/uid/$uid/api/v1/$path"
+    }
+
+    // Manual leg-switch: POST /api/switch on the vpncascade service. leg = "sto"|"ams"|"auto".
+    suspend fun switchLeg(segment: String, leg: String): SwitchResult {
+        val base = vpncascadeBaseURL.trimEnd('/')
+        require(base.isNotEmpty()) { "vpncascade URL not set" }
+        // segment is a host id, leg is sto|ams|auto — no escaping needed.
+        val body = "{\"segment\":\"$segment\",\"leg\":\"$leg\"}"
+        val resp = api.post("$base/api/switch", body, switchToken())
+        val res = api.decode<SwitchResult>(resp)
+        if (!res.ok) throw Exception(res.error ?: "switch failed")
+        return res
     }
 
     // URLEncoder turns spaces into '+', which Prometheus reads literally (→ PromQL syntax

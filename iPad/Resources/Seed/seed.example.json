@@ -23,5 +23,7 @@
   "cascadeTrafficHosts": {
     "sto": "egress-a",
     "ams": "egress-b"
-  }
+  },
+  "vpncascadeBaseURL": "https://vpncascade.example.tld",
+  "switchToken": "CHANGE-ME-switch-token"
 }

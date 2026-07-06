@@ -11,6 +11,8 @@ final class AppState: ObservableObject {
     @Published var grafanaBaseURL: String { didSet { ud.set(grafanaBaseURL, forKey: "grafanaBaseURL") } }
     @Published var grafanaDatasourceUID: String { didSet { ud.set(grafanaDatasourceUID, forKey: "grafanaDatasourceUID") } }
     @Published var homePageBaseURL: String { didSet { ud.set(homePageBaseURL, forKey: "homePageBaseURL") } }
+    // Base URL of the vpncascade service (e.g. https://vpncascade.infralab.su) — for the manual leg-switch.
+    @Published var vpncascadeBaseURL: String { didSet { ud.set(vpncascadeBaseURL, forKey: "vpncascadeBaseURL") } }
     @Published var refreshInterval: Double { didSet { ud.set(refreshInterval, forKey: "refreshInterval") } }
 
     // Secure tokens (Keychain)
@@ -21,6 +23,11 @@ final class AppState: ObservableObject {
     var grafanaToken: String {
         get { Keychain.get("grafanaToken") ?? "" }
         set { objectWillChange.send(); Keychain.set("grafanaToken", value: newValue) }
+    }
+    // Bearer token for POST /api/switch (empty → switch controls hidden).
+    var switchToken: String {
+        get { Keychain.get("switchToken") ?? "" }
+        set { objectWillChange.send(); Keychain.set("switchToken", value: newValue) }
     }
 
     // MARK: - Runtime data
@@ -54,6 +61,7 @@ final class AppState: ObservableObject {
         grafanaBaseURL = ud.string(forKey: "grafanaBaseURL") ?? ""
         grafanaDatasourceUID = ud.string(forKey: "grafanaDatasourceUID") ?? "prometheus"
         homePageBaseURL = ud.string(forKey: "homePageBaseURL") ?? ""
+        vpncascadeBaseURL = ud.string(forKey: "vpncascadeBaseURL") ?? ""
         let stored = ud.double(forKey: "refreshInterval")
         refreshInterval = stored > 0 ? stored : 30
         seedFromBundleIfNeeded()
@@ -70,6 +78,7 @@ final class AppState: ObservableObject {
         var kumaBaseURL, kumaSlug, kumaAPIKey: String?
         var grafanaBaseURL, grafanaDatasourceUID, grafanaToken: String?
         var homePageBaseURL: String?
+        var vpncascadeBaseURL, switchToken: String?
         var cascadeSegments: [CascadeSegmentCfg]?
         var cascadeTrafficHosts: [String: String]?
     }
@@ -84,8 +93,10 @@ final class AppState: ObservableObject {
         if let v = s.grafanaBaseURL { grafanaBaseURL = v }
         if let v = s.grafanaDatasourceUID, !v.isEmpty { grafanaDatasourceUID = v }
         if let v = s.homePageBaseURL { homePageBaseURL = v }
+        if let v = s.vpncascadeBaseURL { vpncascadeBaseURL = v }
         if let v = s.kumaAPIKey, !v.isEmpty { kumaAPIKey = v }
         if let v = s.grafanaToken, !v.isEmpty { grafanaToken = v }
+        if let v = s.switchToken, !v.isEmpty { switchToken = v }
     }
 
     /// Cascade layout comes from the bundled seed.json on every launch — real node / group
@@ -296,6 +307,29 @@ final class AppState: ObservableObject {
         }
         return metric["host"] ?? metric["instance"] ?? metric["name"]
             ?? metric.values.first ?? "value"
+    }
+
+    // MARK: - Manual leg-switch (POST /api/switch on the vpncascade service)
+
+    struct SwitchResult: Codable { let ok: Bool; let override: String?; let active: String?; let error: String? }
+
+    /// Force a segment's egress leg: leg = "sto" | "ams" | "auto". Returns the resulting state.
+    func switchLeg(segment: String, leg: String) async throws -> SwitchResult {
+        let base = vpncascadeBaseURL.trimmingCharacters(in: .init(charactersIn: "/"))
+        guard !base.isEmpty, let url = URL(string: "\(base)/api/switch") else { throw URLError(.badURL) }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 25)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !switchToken.isEmpty { req.setValue("Bearer \(switchToken)", forHTTPHeaderField: "Authorization") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["segment": segment, "leg": leg])
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let res = try JSONDecoder().decode(SwitchResult.self, from: data)
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if code >= 400 || !res.ok {
+            throw NSError(domain: "Switch", code: code,
+                          userInfo: [NSLocalizedDescriptionKey: res.error ?? "HTTP \(code)"])
+        }
+        return res
     }
 
     // MARK: - Networking

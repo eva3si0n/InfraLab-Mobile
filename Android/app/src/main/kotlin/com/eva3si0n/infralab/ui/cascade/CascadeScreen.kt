@@ -75,6 +75,10 @@ fun CascadeScreen(vm: AppViewModel) {
     var history by remember { mutableStateOf<List<Migration>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf<Triple<String, String, String>?>(null) }  // seg, leg, label
+    var switching by remember { mutableStateOf(false) }
+    var switchNote by remember { mutableStateOf<String?>(null) }
+    val showForce = vm.hasSwitchToken()
     val scope = rememberCoroutineScope()
 
     suspend fun load() {
@@ -152,11 +156,11 @@ fun CascadeScreen(vm: AppViewModel) {
                             if (wide) {
                                 item(key = "segrow") {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
-                                        segs.forEach { Box(Modifier.width(cardW)) { SegCard(it) } }
+                                        segs.forEach { Box(Modifier.width(cardW)) { SegCard(it, showForce) { seg, leg, label -> pending = Triple(seg, leg, label) } } }
                                     }
                                 }
                             } else {
-                                items(segs) { SegCard(it) }
+                                items(segs) { SegCard(it, showForce) { seg, leg, label -> pending = Triple(seg, leg, label) } }
                             }
                             item(key = "egress") {
                                 if (wide) Box(Modifier.fillMaxWidth(), Alignment.Center) { Box(Modifier.width(groupW)) { EgressCard(legs) } }
@@ -170,6 +174,38 @@ fun CascadeScreen(vm: AppViewModel) {
                     }
                 }
             }
+        }
+
+        // Two-step confirm for a manual leg-switch.
+        pending?.let { (seg, leg, label) ->
+            AlertDialog(
+                onDismissRequest = { pending = null },
+                title = { Text("Переключить активное плечо?") },
+                text = { Text(label) },
+                confirmButton = {
+                    TextButton(enabled = !switching, onClick = {
+                        pending = null; switching = true
+                        scope.launch {
+                            try {
+                                val r = vm.switchLeg(seg, leg)
+                                switchNote = "✓ $label: активно ${(r.active ?: "").uppercase()} (override ${r.override ?: "—"})"
+                                kotlinx.coroutines.delay(1000); load()
+                            } catch (e: Exception) {
+                                switchNote = "✗ ${e.message}"
+                            } finally { switching = false }
+                        }
+                    }) { Text("Переключить") }
+                },
+                dismissButton = { TextButton(onClick = { pending = null }) { Text("Отмена") } }
+            )
+        }
+        switchNote?.let { note ->
+            AlertDialog(
+                onDismissRequest = { switchNote = null },
+                title = { Text("VPN Cascade") },
+                text = { Text(note) },
+                confirmButton = { TextButton(onClick = { switchNote = null }) { Text("OK") } }
+            )
         }
     }
 }
@@ -247,7 +283,7 @@ private fun decisionReason(s: Seg, history: List<Migration>): String {
 }
 
 @Composable
-private fun SegCard(s: Seg) {
+private fun SegCard(s: Seg, showForce: Boolean = false, onForce: (String, String, String) -> Unit = { _, _, _ -> }) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(s.title, style = MaterialTheme.typography.titleSmall)
@@ -267,6 +303,22 @@ private fun SegCard(s: Seg) {
             KV("RTT STO", s.rtt["sto"]?.let { "${it.toInt()} ms" } ?: "—")
             KV("RTT AMS", s.rtt["ams"]?.let { "${it.toInt()} ms" } ?: "—")
             KV("RTT FI", s.rtt["fi"]?.let { "${it.toInt()} ms" } ?: "—")
+            if (showForce) {
+                val segLabel = s.title.substringBefore(" · ")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Force leg", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    listOf("sto" to "STO", "ams" to "AMS", "auto" to "Auto").forEach { (leg, txt) ->
+                        val on = s.activeLeg == leg
+                        OutlinedButton(
+                            onClick = { onForce(s.host, leg, "$segLabel → $txt") },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(start = 4.dp),
+                            colors = if (on) ButtonDefaults.outlinedButtonColors(contentColor = STO)
+                                     else ButtonDefaults.outlinedButtonColors()
+                        ) { Text(txt, style = MaterialTheme.typography.labelMedium) }
+                    }
+                }
+            }
             CascadeCard(s)
         }
     }

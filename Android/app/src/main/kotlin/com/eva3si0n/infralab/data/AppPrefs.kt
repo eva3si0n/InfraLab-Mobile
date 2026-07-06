@@ -12,6 +12,7 @@ class AppPrefs(context: Context) {
     var grafanaBaseURL: String by StringPref(prefs, "grafanaBaseURL", "")
     var grafanaDatasourceUID: String by StringPref(prefs, "grafanaDatasourceUID", "prometheus")
     var homePageBaseURL: String by StringPref(prefs, "homePageBaseURL", "")
+    var vpncascadeBaseURL: String by StringPref(prefs, "vpncascadeBaseURL", "")
     var refreshIntervalSecs: Long by LongPref(prefs, "refreshIntervalSecs", 30L)
 }
 

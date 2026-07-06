@@ -96,8 +96,19 @@ data class SeedConfig(
     val grafanaDatasourceUID: String? = null,
     val grafanaToken: String? = null,
     val homePageBaseURL: String? = null,
+    val vpncascadeBaseURL: String? = null,
+    val switchToken: String? = null,
     val cascadeSegments: List<CascadeSegmentCfg>? = null,
     val cascadeTrafficHosts: Map<String, String>? = null
+)
+
+// Result of POST /api/switch on the vpncascade service (manual leg-switch).
+@Serializable
+data class SwitchResult(
+    val ok: Boolean = false,
+    val override: String? = null,
+    val active: String? = null,
+    val error: String? = null
 )
 
 data class PanelDef(

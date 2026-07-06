@@ -18,11 +18,16 @@ struct CascadeView: View {
     struct Leg: Identifiable { let id = UUID(); let leg: String; let homeRTT, txBytes, limitBytes: Double? }
     struct Migration: Identifiable { let id = UUID(); let host, from, to: String; let time: Date; let reason: String }
 
+    struct PendingSwitch: Identifiable { let id = UUID(); let seg, leg, label: String }
+
     @State private var segs: [Seg] = []
     @State private var legs: [Leg] = []
     @State private var history: [Migration] = []
     @State private var loading = false
     @State private var errText: String?
+    @State private var pending: PendingSwitch?
+    @State private var switching = false
+    @State private var switchNote: String?
 
     private let cascadeHint = "up — активное плечо STO/AMS (чистый Vultr-egress); down — деградация на FI (оба Vultr-плеча недоступны) или несвежий handshake."
     private let egressHint = "Лимит Vultr 2 ТБ на инстанс (STO и AMS отдельно), считается outbound (tx), сброс 1-го числа. FI — cold standby, квота не отслеживается."
@@ -54,6 +59,42 @@ struct CascadeView: View {
         }
         .listStyle(.insetGrouped)
         .refreshable { await load() }
+        .confirmationDialog("Переключить активное плечо?", isPresented:
+            Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }), presenting: pending) { ps in
+            Button("Переключить: \(ps.label)", role: .destructive) { Task { await doSwitch(ps) } }
+            Button("Отмена", role: .cancel) { pending = nil }
+        } message: { ps in Text(ps.label) }
+        .alert("VPN Cascade", isPresented: Binding(get: { switchNote != nil }, set: { if !$0 { switchNote = nil } })) {
+            Button("OK", role: .cancel) { switchNote = nil }
+        } message: { Text(switchNote ?? "") }
+    }
+
+    // Per-segment STO/AMS/Auto force controls (shown only when a switch token is configured).
+    @ViewBuilder private func switchControls(_ s: Seg) -> some View {
+        if !appState.switchToken.isEmpty {
+            HStack(spacing: 6) {
+                Text("Force leg").font(.subheadline)
+                Spacer(minLength: 4)
+                swBtn(s, "sto", "STO"); swBtn(s, "ams", "AMS"); swBtn(s, "auto", "Auto")
+            }
+        }
+    }
+
+    private func swBtn(_ s: Seg, _ leg: String, _ label: String) -> some View {
+        Button(label) { pending = PendingSwitch(seg: s.host, leg: leg, label: "\(segLabel(s.host)) → \(label)") }
+            .buttonStyle(.bordered).controlSize(.small)
+            .tint(s.activeLeg == leg ? .green : .secondary)
+            .disabled(switching)
+    }
+
+    private func doSwitch(_ ps: PendingSwitch) async {
+        pending = nil; switching = true; defer { switching = false }
+        do {
+            let r = try await appState.switchLeg(segment: ps.seg, leg: ps.leg)
+            switchNote = "✓ \(ps.label): активно \((r.active ?? "").uppercased()) (override \(r.override ?? "—"))"
+            try? await Task.sleep(for: .seconds(1))
+            await load()
+        } catch { switchNote = "✗ \(error.localizedDescription)" }
     }
 
     @ViewBuilder private func segmentSection(_ s: Seg) -> some View {
@@ -72,6 +113,7 @@ struct CascadeView: View {
             row("RTT STO", s.rtt["sto"].map { "\(Int($0.rounded())) ms" } ?? "—")
             row("RTT AMS", s.rtt["ams"].map { "\(Int($0.rounded())) ms" } ?? "—")
             row("RTT FI",  s.rtt["fi"].map  { "\(Int($0.rounded())) ms" } ?? "—")
+            switchControls(s)
             cascadeCard(s)
         }
     }
