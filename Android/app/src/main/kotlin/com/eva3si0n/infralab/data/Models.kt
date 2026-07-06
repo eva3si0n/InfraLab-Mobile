@@ -111,6 +111,13 @@ data class SwitchResult(
     val error: String? = null
 )
 
+// Minimal view of GET /api/cascade — just the manual-override state per segment.
+@Serializable
+data class OverrideSeg(val host: String, val override: String? = null, val manual: Boolean = false)
+
+@Serializable
+data class OverridePayload(val segments: List<OverrideSeg> = emptyList())
+
 data class PanelDef(
     val title: String,
     val kind: PanelKind,

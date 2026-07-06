@@ -313,6 +313,21 @@ final class AppState: ObservableObject {
 
     struct SwitchResult: Codable { let ok: Bool; let override: String?; let active: String?; let error: String? }
 
+    /// Fetch manual-override state from the vpncascade service: host → forced leg (sto/ams).
+    /// Empty when nothing is pinned or the service isn't configured. Never throws (best-effort).
+    func fetchOverrides() async -> [String: String] {
+        let base = vpncascadeBaseURL.trimmingCharacters(in: .init(charactersIn: "/"))
+        guard !base.isEmpty, let url = URL(string: "\(base)/api/cascade") else { return [:] }
+        struct Resp: Codable { struct S: Codable { let host: String; let override: String?; let manual: Bool? }; let segments: [S] }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let r = try JSONDecoder().decode(Resp.self, from: data)
+            var out: [String: String] = [:]
+            for s in r.segments where (s.manual ?? false) { out[s.host] = s.override ?? "" }
+            return out
+        } catch { return [:] }
+    }
+
     /// Force a segment's egress leg: leg = "sto" | "ams" | "auto". Returns the resulting state.
     func switchLeg(segment: String, leg: String) async throws -> SwitchResult {
         let base = vpncascadeBaseURL.trimmingCharacters(in: .init(charactersIn: "/"))

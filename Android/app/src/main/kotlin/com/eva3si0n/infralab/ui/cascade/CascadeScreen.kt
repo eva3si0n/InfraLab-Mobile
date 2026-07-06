@@ -78,6 +78,7 @@ fun CascadeScreen(vm: AppViewModel) {
     var pending by remember { mutableStateOf<Triple<String, String, String>?>(null) }  // seg, leg, label
     var switching by remember { mutableStateOf(false) }
     var switchNote by remember { mutableStateOf<String?>(null) }
+    var manual by remember { mutableStateOf<Map<String, String>>(emptyMap()) }  // host → forced leg
     val showForce = vm.hasSwitchToken()
     val scope = rememberCoroutineScope()
 
@@ -126,6 +127,7 @@ fun CascadeScreen(vm: AppViewModel) {
                 }
             }.sortedByDescending { it.epoch }
             error = null
+            manual = vm.fetchOverrides()
         } catch (e: Exception) {
             error = e.message ?: "error"
         } finally {
@@ -149,6 +151,23 @@ fun CascadeScreen(vm: AppViewModel) {
                     val groupW = cardW * 2 + 12.dp
                     PullToRefreshBox(isRefreshing = loading, onRefresh = { scope.launch { load() } }) {
                         LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (manual.isNotEmpty()) item(key = "manual") {
+                                val txt = manual.entries.joinToString("; ") { (h, leg) ->
+                                    val lbl = vm.cascadeSegments.firstOrNull { it.host == h }?.title?.substringBefore(" · ") ?: h
+                                    "$lbl → ${leg.uppercase()}"
+                                }
+                                Card(
+                                    Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = AMS.copy(alpha = 0.18f))
+                                ) {
+                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("🔴", style = MaterialTheme.typography.bodyMedium)
+                                        Text("Ручной режим — $txt. Верни Auto, когда не нужно.",
+                                            style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
                             item(key = "decision") {
                                 if (wide) Box(Modifier.fillMaxWidth(), Alignment.Center) { Box(Modifier.width(groupW)) { DecisionCard(segs, history) } }
                                 else DecisionCard(segs, history)

@@ -242,6 +242,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return res
     }
 
+    // Manual-override state from the vpncascade service: host → forced leg (only manual segments).
+    // Best-effort; empty on any failure or when the service isn't configured.
+    suspend fun fetchOverrides(): Map<String, String> {
+        val base = vpncascadeBaseURL.trimEnd('/')
+        if (base.isEmpty()) return emptyMap()
+        return runCatching {
+            val d = api.decode<OverridePayload>(api.get("$base/api/cascade"))
+            d.segments.filter { it.manual }.associate { it.host to (it.override ?: "") }
+        }.getOrDefault(emptyMap())
+    }
+
     // URLEncoder turns spaces into '+', which Prometheus reads literally (→ PromQL syntax
     // error). Real '+' are already %2B, so swapping the remaining '+' to %20 is safe.
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")

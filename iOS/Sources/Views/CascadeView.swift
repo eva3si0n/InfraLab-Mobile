@@ -28,6 +28,7 @@ struct CascadeView: View {
     @State private var pending: PendingSwitch?
     @State private var switching = false
     @State private var switchNote: String?
+    @State private var manual: [String: String] = [:]   // host → forced leg while in manual mode
 
     private let cascadeHint = "up — активное плечо STO/AMS (чистый Vultr-egress); down — деградация на FI (оба Vultr-плеча недоступны) или несвежий handshake."
     private let egressHint = "Лимит Vultr 2 ТБ на инстанс (STO и AMS отдельно), считается outbound (tx), сброс 1-го числа. FI — cold standby, квота не отслеживается."
@@ -52,6 +53,7 @@ struct CascadeView: View {
 
     private var list: some View {
         List {
+            if !manual.isEmpty { manualBanner }
             decisionSection
             ForEach(segs) { segmentSection($0) }
             egressSection
@@ -67,6 +69,17 @@ struct CascadeView: View {
         .alert("VPN Cascade", isPresented: Binding(get: { switchNote != nil }, set: { if !$0 { switchNote = nil } })) {
             Button("OK", role: .cancel) { switchNote = nil }
         } message: { Text(switchNote ?? "") }
+    }
+
+    private var manualBanner: some View {
+        Section {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text("Ручной режим — " + manual.map { "\(segLabel($0.key)) → \($0.value.uppercased())" }.joined(separator: "; ")
+                    + ". Верни Auto, когда не нужно.").font(.footnote)
+            }
+        }
+        .listRowBackground(Color.orange.opacity(0.15))
     }
 
     // Per-segment STO/AMS/Auto force controls (shown only when a switch token is configured).
@@ -354,5 +367,6 @@ struct CascadeView: View {
         } catch let e {
             errText = e.localizedDescription
         }
+        manual = await appState.fetchOverrides()
     }
 }
