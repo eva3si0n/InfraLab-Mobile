@@ -93,8 +93,8 @@ fun CascadeScreen(vm: AppViewModel) {
             val active = vm.promInstant("vpn_egress_active_leg == 1", "")
             val durQ = vm.promInstant("vpn_egress_active_seconds", "")
             val rtt = vm.promInstant("vpn_leg_rtt_ms", "")
-            val txbps = vm.promInstant("sum by (host) (rate(wireguard_sent_bytes[5m]))", "")
-            val rxbps = vm.promInstant("sum by (host) (rate(wireguard_received_bytes[5m]))", "")
+            val txbps = vm.promInstant("sum by (host) (rate(wireguard_sent_bytes[1m]))", "")
+            val rxbps = vm.promInstant("sum by (host) (rate(wireguard_received_bytes[1m]))", "")
             val home = vm.promInstant("home_node_rtt_ms", "")
             val tx = vm.promInstant("vds_month_tx_bytes", "")
             val lim = vm.promInstant("vds_month_limit_bytes", "")
@@ -340,7 +340,7 @@ private fun SegCard(
                 }
             }
             if (s.txBps != null && s.rxBps != null) {
-                KV("Throughput WG", "↑ ${fmtBps(s.txBps)}  ↓ ${fmtBps(s.rxBps)}")
+                KV("Throughput WG · rate 1m", "↑ ${fmtBps(s.txBps)}  ↓ ${fmtBps(s.rxBps)}")
             }
             spark?.let { (tx, rx) ->
                 if (tx.size > 1) {
