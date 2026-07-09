@@ -116,10 +116,23 @@ fun CascadeScreen(vm: AppViewModel) {
                     rxbps.firstOrNull { it.labels["host"] == cfg.host }?.value,
                     healthy, casc)
             }
+            // Month-to-date outbound for legs without a provider limit (e.g. FI): increase()
+            // over the node_exporter interface counter since the 1st (MSK+2), like vpncascade.
+            val netTx = mutableMapOf<String, Double>()
+            if (vm.cascadeTrafficNet.isNotEmpty()) {
+                val zone = java.time.ZoneOffset.ofHours(5) // MSK+2 (UTC+5), no DST
+                val now = java.time.ZonedDateTime.now(zone)
+                val monthStart = now.toLocalDate().withDayOfMonth(1).atStartOfDay(zone)
+                val secs = maxOf(1L, java.time.Duration.between(monthStart, now).seconds)
+                for ((leg, nt) in vm.cascadeTrafficNet) {
+                    val q = "increase(node_network_transmit_bytes_total{host=\"${nt.host}\",device=\"${nt.device}\"}[${secs}s])"
+                    vm.promInstant(q, "").firstOrNull()?.value?.let { netTx[leg] = it }
+                }
+            }
             legs = listOf("sto", "ams", "fi").map { l ->
                 val host = vm.cascadeTrafficHosts[l] ?: ""
                 Leg(l, home.firstOrNull { it.labels["node"] == l }?.value,
-                    if (host.isEmpty()) null else tx.firstOrNull { it.labels["host"] == host }?.value,
+                    if (host.isEmpty()) netTx[l] else tx.firstOrNull { it.labels["host"] == host }?.value,
                     if (host.isEmpty()) null else lim.firstOrNull { it.labels["host"] == host }?.value)
             }
             history = sw.mapNotNull { r ->
@@ -426,6 +439,13 @@ private fun EgressCard(legs: List<Leg>) {
                             Text("${fmtBytes(lg.txBytes)} / ${fmtBytes(lg.limitBytes)}",
                                 style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                             Text("%.1f%%".format(frac * 100), style = MaterialTheme.typography.labelSmall)
+                        }
+                    } else if (lg.txBytes != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${fmtBytes(lg.txBytes)} · this month",
+                                style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                            Text("no limit", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

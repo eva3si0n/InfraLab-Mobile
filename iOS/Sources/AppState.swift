@@ -47,6 +47,11 @@ final class AppState: ObservableObject {
         .init(host: "node-b", title: "Mobile · FQDN хоста", kumaGroup: "Node B", cascadeMatch: "node-b")
     ]
     private(set) var cascadeTrafficHosts: [String: String] = [:]
+    private(set) var cascadeTrafficNet: [String: NetTarget] = [:]
+
+    /// node_exporter interface (host+device) for month-to-date traffic on legs without a
+    /// provider limit (e.g. FI) — mirrors vpncascade's cascadeTrafficNet.
+    struct NetTarget: Codable, Sendable { let host: String; let device: String }
 
     // MARK: - Private
 
@@ -81,6 +86,7 @@ final class AppState: ObservableObject {
         var vpncascadeBaseURL, switchToken: String?
         var cascadeSegments: [CascadeSegmentCfg]?
         var cascadeTrafficHosts: [String: String]?
+        var cascadeTrafficNet: [String: NetTarget]?
     }
 
     private func seedFromBundleIfNeeded() {
@@ -107,6 +113,7 @@ final class AppState: ObservableObject {
               let s = try? JSONDecoder().decode(SeedConfig.self, from: data) else { return }
         if let segs = s.cascadeSegments, !segs.isEmpty { cascadeSegments = segs }
         if let th = s.cascadeTrafficHosts { cascadeTrafficHosts = th }
+        if let tn = s.cascadeTrafficNet { cascadeTrafficNet = tn }
     }
 
     // MARK: - Refresh orchestration

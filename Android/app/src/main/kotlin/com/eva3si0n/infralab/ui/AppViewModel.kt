@@ -62,6 +62,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         CascadeSegmentCfg("node-b", "Mobile · FQDN хоста", "Node B", "node-b")
     ); private set
     var cascadeTrafficHosts: Map<String, String> = emptyMap(); private set
+    var cascadeTrafficNet: Map<String, NetTarget> = emptyMap(); private set
 
     private var refreshJob: Job? = null
 
@@ -93,6 +94,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val s = api.json.decodeFromString<SeedConfig>(txt)
             s.cascadeSegments?.takeIf { it.isNotEmpty() }?.let { cascadeSegments = it }
             s.cascadeTrafficHosts?.let { cascadeTrafficHosts = it }
+            s.cascadeTrafficNet?.let { cascadeTrafficNet = it }
         }
     }
 

@@ -24,6 +24,12 @@
     "sto": "egress-a",
     "ams": "egress-b"
   },
+  "cascadeTrafficNet": {
+    "fi": {
+      "host": "cold-node",
+      "device": "ens3"
+    }
+  },
   "vpncascadeBaseURL": "https://vpncascade.example.tld",
   "switchToken": "CHANGE-ME-switch-token"
 }

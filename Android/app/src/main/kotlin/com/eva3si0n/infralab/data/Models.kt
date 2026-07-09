@@ -99,8 +99,14 @@ data class SeedConfig(
     val vpncascadeBaseURL: String? = null,
     val switchToken: String? = null,
     val cascadeSegments: List<CascadeSegmentCfg>? = null,
-    val cascadeTrafficHosts: Map<String, String>? = null
+    val cascadeTrafficHosts: Map<String, String>? = null,
+    val cascadeTrafficNet: Map<String, NetTarget>? = null
 )
+
+// node_exporter interface (host+device) for month-to-date traffic on legs without a
+// provider limit (e.g. FI) — mirrors vpncascade's cascadeTrafficNet.
+@Serializable
+data class NetTarget(val host: String = "", val device: String = "")
 
 // Result of POST /api/switch on the vpncascade service (manual leg-switch).
 @Serializable

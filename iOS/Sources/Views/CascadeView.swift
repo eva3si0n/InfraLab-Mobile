@@ -176,6 +176,12 @@ struct CascadeView: View {
                             }
                         }
                         .tint(tx / lim > 0.85 ? .red : (tx / lim > 0.6 ? .orange : .green))
+                    } else if let tx = lg.txBytes {
+                        HStack {
+                            Text("\(fmtBytes(tx)) · this month").font(.caption2)
+                            Spacer()
+                            Text("no limit").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding(.vertical, 2)
@@ -358,10 +364,25 @@ struct CascadeView: View {
                            rxBps: rxbps.first { $0.labels["host"] == cfg.host }?.value,
                            healthy: healthy, cascade: casc)
             }
+            // Month-to-date outbound for legs without a provider limit (e.g. FI): increase()
+            // over the node_exporter interface counter since the 1st (MSK+2), like vpncascade.
+            var netTx: [String: Double] = [:]
+            if !appState.cascadeTrafficNet.isEmpty {
+                var cal = Calendar(identifier: .gregorian)
+                cal.timeZone = TimeZone(secondsFromGMT: 5 * 3600) ?? .current
+                let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
+                let secs = max(1, Int(Date().timeIntervalSince(monthStart)))
+                for (leg, nt) in appState.cascadeTrafficNet {
+                    let q = "increase(node_network_transmit_bytes_total{host=\"\(nt.host)\",device=\"\(nt.device)\"}[\(secs)s])"
+                    if let rows = try? await appState.promInstant(q, legend: ""), let v = rows.first?.value {
+                        netTx[leg] = v
+                    }
+                }
+            }
             legs = ["sto", "ams", "fi"].map { l in
                 let host = appState.cascadeTrafficHosts[l] ?? ""
                 return Leg(leg: l, homeRTT: home.first { $0.labels["node"] == l }?.value,
-                           txBytes: host.isEmpty ? nil : tx.first { $0.labels["host"] == host }?.value,
+                           txBytes: host.isEmpty ? netTx[l] : tx.first { $0.labels["host"] == host }?.value,
                            limitBytes: host.isEmpty ? nil : lim.first { $0.labels["host"] == host }?.value)
             }
             history = sw.compactMap { r -> Migration? in
