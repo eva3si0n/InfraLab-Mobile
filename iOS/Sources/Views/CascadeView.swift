@@ -122,7 +122,7 @@ struct CascadeView: View {
                 Text(fmtDur(s.activeSeconds)).font(.caption).foregroundStyle(.secondary)
             }
             if let tx = s.txBps, let rx = s.rxBps {
-                row("Throughput WG · rate 1m", "↑ \(fmtBps(tx))  ↓ \(fmtBps(rx))")
+                row("Throughput WG · rate 2m", "↑ \(fmtBps(tx))  ↓ \(fmtBps(rx))")
             }
             if let ser = series[s.host], ser.tx.count > 1 {
                 Sparkline(tx: ser.tx, rx: ser.rx)
@@ -341,8 +341,8 @@ struct CascadeView: View {
             let active = try await appState.promInstant("vpn_egress_active_leg == 1", legend: "")
             let durQ  = try await appState.promInstant("vpn_egress_active_seconds", legend: "")
             let rtt   = try await appState.promInstant("vpn_leg_rtt_ms", legend: "")
-            let txbps = try await appState.promInstant("sum by (host) (rate(wireguard_sent_bytes[1m]))", legend: "")
-            let rxbps = try await appState.promInstant("sum by (host) (rate(wireguard_received_bytes[1m]))", legend: "")
+            let txbps = try await appState.promInstant("sum by (host) (rate(wireguard_sent_bytes[2m]))", legend: "")
+            let rxbps = try await appState.promInstant("sum by (host) (rate(wireguard_received_bytes[2m]))", legend: "")
             let home  = try await appState.promInstant("home_node_rtt_ms", legend: "")
             let tx    = try await appState.promInstant("vds_month_tx_bytes", legend: "")
             let lim   = try await appState.promInstant("vds_month_limit_bytes", legend: "")
