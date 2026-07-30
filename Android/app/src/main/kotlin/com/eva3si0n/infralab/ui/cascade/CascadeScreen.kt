@@ -103,7 +103,10 @@ fun CascadeScreen(vm: AppViewModel) {
             val lim = vm.promInstant("vds_month_limit_bytes", "")
             val sw = vm.promInstant("vpn_egress_switch_time", "")
 
-            segs = vm.cascadeSegments.map { cfg ->
+            // Порядок как на веб-странице: сначала «РКН Ingress», затем домашний каскад.
+            // Задаём ЯВНО, а не порядком в seed — на вебе он тоже задан кодом. sortedBy
+            // стабильна, поэтому внутри группы порядок seed сохраняется.
+            segs = vm.cascadeSegments.sortedBy { if (it.group == "rkn") 0 else 1 }.map { cfg ->
                 val al = active.firstOrNull { it.labels["host"] == cfg.host }?.labels?.get("leg") ?: "—"
                 val ds = durQ.firstOrNull { it.labels["host"] == cfg.host }?.value ?: 0.0
                 val rm = rtt.filter { it.labels["host"] == cfg.host }

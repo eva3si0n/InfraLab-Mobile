@@ -381,7 +381,16 @@ struct CascadeView: View {
             let lim   = try await appState.promInstant("vds_month_limit_bytes", legend: "")
             let sw    = try await appState.promInstant("vpn_egress_switch_time", legend: "")
 
-            segs = appState.cascadeSegments.map { cfg in
+            // Порядок как на веб-странице: сначала группа «РКН Ingress», затем домашний
+            // каскад. Задаём ЯВНО, а не порядком в seed — на вебе он тоже задан кодом
+            // (grpBlock("rkn") перед grpBlock("udm")), и от перестановки строк в конфиге
+            // раскладка съезжать не должна. Внутри группы порядок seed сохраняем.
+            let ordered = appState.cascadeSegments.enumerated().sorted { a, b in
+                let ra = a.element.group == "rkn" ? 0 : 1
+                let rb = b.element.group == "rkn" ? 0 : 1
+                return ra == rb ? a.offset < b.offset : ra < rb
+            }.map(\.element)
+            segs = ordered.map { cfg in
                 let al = active.first { $0.labels["host"] == cfg.host }?.labels["leg"] ?? "—"
                 let ds = durQ.first { $0.labels["host"] == cfg.host }?.value ?? 0
                 var rm: [String: Double] = [:]
