@@ -15,7 +15,7 @@ struct CascadeView: View {
         let cascade: MonitorStatus?
     }
     struct Leg: Identifiable { let id = UUID(); let leg: String; let homeRTT, txBytes, limitBytes: Double? }
-    struct Migration: Identifiable { let id = UUID(); let host, from, to: String; let time: Date; let reason: String }
+    struct Migration: Identifiable { let id = UUID(); let host, from, to: String; let time: Date; let reason: String; let group: String }
 
     struct PendingSwitch: Identifiable { let id = UUID(); let seg, leg, label: String }
 
@@ -187,26 +187,62 @@ struct CascadeView: View {
         }
     }
 
+    /// История разнесена по группам и листается влево-вправо — как на веб-странице.
+    /// Это два несвязанных каскада: у домашнего входа плечи sto/ams/fi, у РКН-входа своя
+    /// схема с транзитом через соседа. В общем списке их переключения перемешивались по
+    /// времени и читались как один поток событий.
+    /// Отдельный тип, а не кортеж: у кортежей в Swift нет key path, а он нужен
+    /// и для `ForEach(id:)`, и для `map(\.rows)`.
+    struct HistPage: Identifiable { let id: String; let title: String; let rows: [Migration] }
+
+    private var historyPages: [HistPage] {
+        [HistPage(id: "rkn", title: "РКН Ingress", rows: history.filter { $0.group == "rkn" }),
+         HistPage(id: "udm", title: "UDM Pro · домашний каскад", rows: history.filter { $0.group != "rkn" })]
+            .filter { !$0.rows.isEmpty }
+    }
+
+    @ViewBuilder private func historyRow(_ m: Migration) -> some View {
+        HStack(spacing: 8) {
+            Text(segLabel(m.host))
+                .font(.caption).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
+            pill(m.from.uppercased(), legColor(m.from))
+            Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.secondary)
+            pill(m.to.uppercased(), legColor(m.to))
+            if !m.reason.isEmpty { pill(reasonText(m.reason), reasonColor(m.reason)) }
+            Spacer()
+            Text(fmtTime(m.time)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+    }
+
     @ViewBuilder private var historySection: some View {
-        Section("History · primary-leg migrations") {
+        Section {
             if history.isEmpty {
                 Text("No migrations recorded").font(.subheadline).foregroundStyle(.secondary)
             } else {
-                ForEach(history) { m in
-                    HStack(spacing: 8) {
-                        Text(segLabel(m.host))
-                            .font(.caption).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
-                        pill(m.from.uppercased(), legColor(m.from))
-                        Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.secondary)
-                        pill(m.to.uppercased(), legColor(m.to))
-                        if !m.reason.isEmpty { pill(reasonText(m.reason), reasonColor(m.reason)) }
-                        Spacer()
-                        Text(fmtTime(m.time)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                // Высота под самую длинную страницу: у TabView с .page она фиксированная,
+                // а страницы разной длины — иначе короткая обрезала бы длинную.
+                let maxRows = historyPages.map { $0.rows.count }.max() ?? 0
+                TabView {
+                    ForEach(historyPages) { page in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(page.title.uppercased())
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(page.id == "rkn" ? Color.red : Color.blue)
+                            ForEach(page.rows) { historyRow($0) }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 16).padding(.top, 4)
+                        .tag(page.id)
                     }
                 }
+                .tabViewStyle(.page(indexDisplayMode: historyPages.count > 1 ? .always : .never))
+                .frame(height: CGFloat(maxRows) * 26 + 54)
+                .listRowInsets(EdgeInsets())
                 Text("stale HS — хэндшейк протух; no route — нет прохода через плечо; link down — линк упал; failback — возврат на приоритетное плечо; boot — старт.")
                     .font(.caption2).foregroundStyle(.secondary)
             }
+        } header: {
+            Text("History · primary-leg migrations")
         }
     }
 
@@ -384,7 +420,11 @@ struct CascadeView: View {
             }
             history = sw.compactMap { r -> Migration? in
                 guard let f = r.labels["from"], let t = r.labels["to"], let h = r.labels["host"] else { return nil }
-                return Migration(host: h, from: f, to: t, time: Date(timeIntervalSince1970: r.value), reason: r.labels["reason"] ?? "")
+                // Группа берётся из seed по хосту — тем же полем веб делит историю на
+                // «РКН Ingress» и домашний каскад. Неизвестный хост считаем домашним:
+                // лучше показать строку не в той вкладке, чем потерять её совсем.
+                let g = appState.cascadeSegments.first { $0.host == h }?.group ?? "udm"
+                return Migration(host: h, from: f, to: t, time: Date(timeIntervalSince1970: r.value), reason: r.labels["reason"] ?? "", group: g)
             }.sorted { $0.time > $1.time }
             errText = nil
         } catch let e {

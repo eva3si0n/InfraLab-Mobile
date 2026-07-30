@@ -58,8 +58,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // VPN Cascade layout — from bundled assets/seed.json; placeholder defaults for public builds.
     var cascadeSegments: List<CascadeSegmentCfg> = listOf(
-        CascadeSegmentCfg("node-a", "Wired · FQDN хоста", "Node A", "node-a"),
-        CascadeSegmentCfg("node-b", "Mobile · FQDN хоста", "Node B", "node-b")
+        CascadeSegmentCfg("node-a", "Wired · FQDN хоста", "Node A", "(node-a)", "udm"),
+        CascadeSegmentCfg("node-b", "Mobile · FQDN хоста", "Node B", "(node-b)", "udm"),
+        CascadeSegmentCfg("node-c", "Android · FQDN хоста", "Node C", "(node-c)", "rkn"),
+        CascadeSegmentCfg("node-d", "Резерв · FQDN хоста", "Node D", "(node-d)", "rkn")
     ); private set
     var cascadeTrafficHosts: Map<String, String> = emptyMap(); private set
     var cascadeTrafficNet: Map<String, NetTarget> = emptyMap(); private set

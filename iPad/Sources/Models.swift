@@ -53,6 +53,10 @@ struct CascadeSegmentCfg: Codable, Identifiable {
     let title: String
     let kumaGroup: String
     let cascadeMatch: String
+    /// Дек, в который попадает сегмент: "rkn" (входы под блокировками) или "udm"/nil
+    /// (домашний каскад). Тем же полем веб делит «Cascade decision» и историю миграций —
+    /// держим одно имя на обеих поверхностях, чтобы seed читался одинаково.
+    let group: String?
 }
 
 // MARK: - Prometheus (native charts via Grafana datasource proxy)

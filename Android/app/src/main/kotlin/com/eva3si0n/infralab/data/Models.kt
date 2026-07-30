@@ -84,7 +84,10 @@ data class CascadeSegmentCfg(
     val host: String,
     val title: String,
     val kumaGroup: String,
-    val cascadeMatch: String
+    val cascadeMatch: String,
+    // Дек, в который попадает сегмент: "rkn" (входы под блокировками) или "udm"/null
+    // (домашний каскад). Тем же полем веб делит «Cascade decision» и историю миграций.
+    val group: String? = null
 )
 
 @Serializable

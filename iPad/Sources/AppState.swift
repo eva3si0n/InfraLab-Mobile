@@ -11,7 +11,8 @@ final class AppState: ObservableObject {
     @Published var grafanaBaseURL: String { didSet { ud.set(grafanaBaseURL, forKey: "grafanaBaseURL") } }
     @Published var grafanaDatasourceUID: String { didSet { ud.set(grafanaDatasourceUID, forKey: "grafanaDatasourceUID") } }
     @Published var homePageBaseURL: String { didSet { ud.set(homePageBaseURL, forKey: "homePageBaseURL") } }
-    // Base URL of the vpncascade service (e.g. https://vpncascade.infralab.su) — for the manual leg-switch.
+    // Base URL of the vpncascade service (e.g. https://vpncascade.example.tld) — for the manual leg-switch.
+    // Реальный адрес живёт ТОЛЬКО в gitignored seed.json: репозиторий публичный.
     @Published var vpncascadeBaseURL: String { didSet { ud.set(vpncascadeBaseURL, forKey: "vpncascadeBaseURL") } }
     @Published var refreshInterval: Double { didSet { ud.set(refreshInterval, forKey: "refreshInterval") } }
 
@@ -43,8 +44,10 @@ final class AppState: ObservableObject {
     // VPN Cascade layout — loaded from the bundled seed.json (structural, not user settings).
     // Placeholder defaults keep public builds working without leaking real infra names.
     private(set) var cascadeSegments: [CascadeSegmentCfg] = [
-        .init(host: "node-a", title: "Wired · FQDN хоста", kumaGroup: "Node A", cascadeMatch: "node-a"),
-        .init(host: "node-b", title: "Mobile · FQDN хоста", kumaGroup: "Node B", cascadeMatch: "node-b")
+        .init(host: "node-a", title: "Wired · FQDN хоста", kumaGroup: "Node A", cascadeMatch: "(node-a)", group: "udm"),
+        .init(host: "node-b", title: "Mobile · FQDN хоста", kumaGroup: "Node B", cascadeMatch: "(node-b)", group: "udm"),
+        .init(host: "node-c", title: "Android · FQDN хоста", kumaGroup: "Node C", cascadeMatch: "(node-c)", group: "rkn"),
+        .init(host: "node-d", title: "Резерв · FQDN хоста", kumaGroup: "Node D", cascadeMatch: "(node-d)", group: "rkn")
     ]
     private(set) var cascadeTrafficHosts: [String: String] = [:]
     private(set) var cascadeTrafficNet: [String: NetTarget] = [:]

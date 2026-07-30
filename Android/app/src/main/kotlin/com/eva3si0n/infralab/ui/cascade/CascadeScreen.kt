@@ -29,6 +29,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 
 // VPN Cascade — per-segment egress state + Kuma cascade health + egress-leg traffic + migration history.
 // Data: Prometheus via Grafana proxy (vm.promInstant) + Kuma status page (vm.monitors).
@@ -67,7 +70,7 @@ private data class Seg(
     val healthy: Boolean, val cascade: MonitorStatus?
 )
 private data class Leg(val leg: String, val homeRtt: Double?, val txBytes: Double?, val limitBytes: Double?)
-private data class Migration(val host: String, val label: String, val from: String, val to: String, val epoch: Long, val reason: String = "")
+private data class Migration(val host: String, val label: String, val from: String, val to: String, val epoch: Long, val reason: String = "", val group: String = "udm")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,8 +141,12 @@ fun CascadeScreen(vm: AppViewModel) {
             history = sw.mapNotNull { r ->
                 val f = r.labels["from"]; val t = r.labels["to"]; val h = r.labels["host"]
                 if (f == null || t == null || h == null) null else {
-                    val label = vm.cascadeSegments.firstOrNull { it.host == h }?.title?.substringBefore(" · ") ?: h
-                    Migration(h, label, f, t, r.value.toLong(), r.labels["reason"] ?: "")
+                    val cfg = vm.cascadeSegments.firstOrNull { it.host == h }
+                    val label = cfg?.title?.substringBefore(" · ") ?: h
+                    // Группа из seed: тем же полем веб делит историю на «РКН Ingress» и
+                    // домашний каскад. Неизвестный хост считаем домашним — лучше показать
+                    // строку не в той вкладке, чем потерять совсем.
+                    Migration(h, label, f, t, r.value.toLong(), r.labels["reason"] ?: "", cfg?.group ?: "udm")
                 }
             }.sortedByDescending { it.epoch }
             error = null
@@ -462,25 +469,63 @@ private fun HistoryCard(history: List<Migration>) {
             timeZone = TimeZone.getTimeZone("Asia/Yekaterinburg")   // MSK+2 (UTC+5), not device-local
         }
     }
+    // История разнесена по группам и листается влево-вправо — как на веб-странице.
+    // Это два несвязанных каскада: у домашнего входа плечи sto/ams/fi, у РКН-входа своя
+    // схема с транзитом через соседа. В общем списке их переключения перемешивались по
+    // времени и читались как один поток событий.
+    val pages = remember(history) {
+        listOf("rkn" to "РКН Ingress", "udm" to "UDM Pro · домашний каскад")
+            .map { (key, title) -> Triple(key, title, history.filter { m -> (m.group == "rkn") == (key == "rkn") }) }
+            .filter { it.third.isNotEmpty() }
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("History · primary-leg migrations", style = MaterialTheme.typography.titleSmall)
-            if (history.isEmpty()) {
+            if (pages.isEmpty()) {
                 Text("No migrations recorded", style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                history.forEach { m ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(m.label,
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.width(48.dp))
-                        Pill(m.from.uppercase(), legColor(m.from))
-                        Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Pill(m.to.uppercase(), legColor(m.to))
-                        if (m.reason.isNotEmpty()) Pill(reasonText(m.reason), reasonColor(m.reason))
-                        Spacer(Modifier.weight(1f))
-                        Text(fmt.format(Date(m.epoch * 1000)), style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val pager = rememberPagerState(pageCount = { pages.size })
+                HorizontalPager(state = pager) { page ->
+                    val (key, title, rows) = pages[page]
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            title.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (key == "rkn") MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.primary
+                        )
+                        rows.forEach { m ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(m.label,
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.width(48.dp))
+                                Pill(m.from.uppercase(), legColor(m.from))
+                                Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Pill(m.to.uppercase(), legColor(m.to))
+                                if (m.reason.isNotEmpty()) Pill(reasonText(m.reason), reasonColor(m.reason))
+                                Spacer(Modifier.weight(1f))
+                                Text(fmt.format(Date(m.epoch * 1000)), style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                // Точки-индикаторы рисуем только когда листать есть что.
+                if (pages.size > 1) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            repeat(pages.size) { i ->
+                                Box(
+                                    Modifier.size(if (i == pager.currentPage) 8.dp else 6.dp)
+                                        .background(
+                                            if (i == pager.currentPage) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .35f),
+                                            CircleShape
+                                        )
+                                )
+                            }
+                        }
                     }
                 }
                 Text(

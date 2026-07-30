@@ -11,13 +11,29 @@
       "host": "node-a",
       "title": "Wired · FQDN хоста (uplink · VLANs)",
       "kumaGroup": "Node A",
-      "cascadeMatch": "node-a"
+      "cascadeMatch": "(node-a)",
+      "group": "udm"
     },
     {
       "host": "node-b",
       "title": "Mobile · FQDN хоста (uplink · VLANs)",
       "kumaGroup": "Node B",
-      "cascadeMatch": "node-b"
+      "cascadeMatch": "(node-b)",
+      "group": "udm"
+    },
+    {
+      "host": "node-c",
+      "title": "Android · FQDN хоста (ingress под блокировками)",
+      "kumaGroup": "Node C",
+      "cascadeMatch": "(node-c)",
+      "group": "rkn"
+    },
+    {
+      "host": "node-d",
+      "title": "Резерв · FQDN хоста (ingress под блокировками)",
+      "kumaGroup": "Node D",
+      "cascadeMatch": "(node-d)",
+      "group": "rkn"
     }
   ],
   "cascadeTrafficHosts": {
