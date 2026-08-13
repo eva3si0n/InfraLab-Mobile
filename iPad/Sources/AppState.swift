@@ -14,6 +14,12 @@ final class AppState: ObservableObject {
     // Base URL of the vpncascade service (e.g. https://vpncascade.example.tld) — for the manual leg-switch.
     // Реальный адрес живёт ТОЛЬКО в gitignored seed.json: репозиторий публичный.
     @Published var vpncascadeBaseURL: String { didSet { ud.set(vpncascadeBaseURL, forKey: "vpncascadeBaseURL") } }
+    /// Cloudflare Access service token. Нужен, чтобы дотянуться до vpncascade/InfraHome
+    /// ИЗВНЕ дома: их корень закрыт email-логином Access, а пути `/api` открыты отдельным
+    /// приложением Access с политикой по этому токену (создано 13.08.2026). Без заголовков
+    /// снаружи приходит 403, изнутри LAN — работает и так.
+    /// id не секрет и живёт в UserDefaults; секрет — только в Keychain, как switchToken.
+    @Published var cfAccessClientId: String { didSet { ud.set(cfAccessClientId, forKey: "cfAccessClientId") } }
     @Published var refreshInterval: Double { didSet { ud.set(refreshInterval, forKey: "refreshInterval") } }
 
     // Secure tokens (Keychain)
@@ -26,6 +32,23 @@ final class AppState: ObservableObject {
         set { objectWillChange.send(); Keychain.set("grafanaToken", value: newValue) }
     }
     // Bearer token for POST /api/switch (empty → switch controls hidden).
+    var cfAccessClientSecret: String {
+        get { Keychain.get("cfAccessClientSecret") ?? "" }
+        set { objectWillChange.send(); Keychain.set("cfAccessClientSecret", value: newValue) }
+    }
+
+    /// Запрос к vpncascade/InfraHome с заголовками Access, если токен задан.
+    /// Одна точка: иначе заголовки неизбежно забудут добавить в очередном новом вызове.
+    func cfRequest(_ url: URL) -> URLRequest {
+        var r = URLRequest(url: url)
+        let id = cfAccessClientId, secret = cfAccessClientSecret
+        if !id.isEmpty && !secret.isEmpty {
+            r.setValue(id, forHTTPHeaderField: "CF-Access-Client-Id")
+            r.setValue(secret, forHTTPHeaderField: "CF-Access-Client-Secret")
+        }
+        return r
+    }
+
     var switchToken: String {
         get { Keychain.get("switchToken") ?? "" }
         set { objectWillChange.send(); Keychain.set("switchToken", value: newValue) }
@@ -70,6 +93,7 @@ final class AppState: ObservableObject {
         grafanaDatasourceUID = ud.string(forKey: "grafanaDatasourceUID") ?? "prometheus"
         homePageBaseURL = ud.string(forKey: "homePageBaseURL") ?? ""
         vpncascadeBaseURL = ud.string(forKey: "vpncascadeBaseURL") ?? ""
+        cfAccessClientId = ud.string(forKey: "cfAccessClientId") ?? ""
         let stored = ud.double(forKey: "refreshInterval")
         refreshInterval = stored > 0 ? stored : 30
         seedFromBundleIfNeeded()
@@ -87,6 +111,7 @@ final class AppState: ObservableObject {
         var grafanaBaseURL, grafanaDatasourceUID, grafanaToken: String?
         var homePageBaseURL: String?
         var vpncascadeBaseURL, switchToken: String?
+        var cfAccessClientId, cfAccessClientSecret: String?
         var cascadeSegments: [CascadeSegmentCfg]?
         var cascadeTrafficHosts: [String: String]?
         var cascadeTrafficNet: [String: NetTarget]?
@@ -106,6 +131,8 @@ final class AppState: ObservableObject {
         if let v = s.kumaAPIKey, !v.isEmpty { kumaAPIKey = v }
         if let v = s.grafanaToken, !v.isEmpty { grafanaToken = v }
         if let v = s.switchToken, !v.isEmpty { switchToken = v }
+        if let v = s.cfAccessClientId, !v.isEmpty { cfAccessClientId = v }
+        if let v = s.cfAccessClientSecret, !v.isEmpty { cfAccessClientSecret = v }
     }
 
     /// Cascade layout comes from the bundled seed.json on every launch — real node / group
@@ -335,7 +362,7 @@ final class AppState: ObservableObject {
             let segments: [S]
         }
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, _) = try await URLSession.shared.data(for: cfRequest(url))
             let r = try JSONDecoder().decode(Resp.self, from: data)
             var out: [String: SegAux] = [:]
             for s in r.segments {
@@ -354,6 +381,11 @@ final class AppState: ObservableObject {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !switchToken.isEmpty { req.setValue("Bearer \(switchToken)", forHTTPHeaderField: "Authorization") }
+        // Заголовки Access — иначе снаружи дома запрос упрётся в 403 ещё до сервиса.
+        if !cfAccessClientId.isEmpty && !cfAccessClientSecret.isEmpty {
+            req.setValue(cfAccessClientId, forHTTPHeaderField: "CF-Access-Client-Id")
+            req.setValue(cfAccessClientSecret, forHTTPHeaderField: "CF-Access-Client-Secret")
+        }
         req.httpBody = try JSONSerialization.data(withJSONObject: ["segment": segment, "leg": leg])
         let (data, response) = try await URLSession.shared.data(for: req)
         let res = try JSONDecoder().decode(SwitchResult.self, from: data)

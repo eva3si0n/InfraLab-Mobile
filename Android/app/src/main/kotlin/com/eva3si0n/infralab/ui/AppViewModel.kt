@@ -41,6 +41,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setKumaAPIKey(v: String) { secure.set("kumaAPIKey", v) }
     fun setGrafanaToken(v: String) { secure.set("grafanaToken", v) }
     fun setSwitchToken(v: String) { secure.set("switchToken", v) }
+    // id не секрет и лежит в обычных prefs; секрет — только в EncryptedSharedPreferences.
+    fun setCfAccess(id: String, secret: String) {
+        prefs.cfAccessClientId = id
+        secure.set("cfAccessClientSecret", secret)
+        applyCfAccess()
+    }
+    /// Прокидываем креденшелы в http-клиент — одна точка, чтобы не забыть их в новых вызовах.
+    fun applyCfAccess() {
+        api.cfId = prefs.cfAccessClientId
+        api.cfSecret = secure.get("cfAccessClientSecret")
+    }
     fun hasKumaAPIKey() = secure.has("kumaAPIKey")
     fun hasGrafanaToken() = secure.has("grafanaToken")
     fun grafanaToken() = secure.get("grafanaToken")
@@ -68,7 +79,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private var refreshJob: Job? = null
 
-    init { seedFromAssetsIfNeeded(); loadCascadeConfig() }
+    // applyCfAccess ПОСЛЕ сида: на первом запуске креденшелы приезжают из seed, и без
+    // повторного прокидывания http-клиент остался бы без заголовков до перезапуска.
+    init { seedFromAssetsIfNeeded(); loadCascadeConfig(); applyCfAccess() }
 
     // Pre-fill Settings from a bundled assets/seed.json on first launch (personal builds).
     // The file is gitignored — never committed; absent in public clones (then no-op).
@@ -86,6 +99,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             s.kumaAPIKey?.takeIf { it.isNotEmpty() }?.let { setKumaAPIKey(it) }
             s.grafanaToken?.takeIf { it.isNotEmpty() }?.let { setGrafanaToken(it) }
             s.switchToken?.takeIf { it.isNotEmpty() }?.let { setSwitchToken(it) }
+            s.cfAccessClientId?.takeIf { it.isNotEmpty() }?.let { id ->
+                setCfAccess(id, s.cfAccessClientSecret ?: "")
+            }
         }
     }
 

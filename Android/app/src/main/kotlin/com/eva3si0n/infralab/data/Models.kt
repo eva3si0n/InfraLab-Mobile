@@ -101,6 +101,8 @@ data class SeedConfig(
     val homePageBaseURL: String? = null,
     val vpncascadeBaseURL: String? = null,
     val switchToken: String? = null,
+    val cfAccessClientId: String? = null,
+    val cfAccessClientSecret: String? = null,
     val cascadeSegments: List<CascadeSegmentCfg>? = null,
     val cascadeTrafficHosts: Map<String, String>? = null,
     val cascadeTrafficNet: Map<String, NetTarget>? = null

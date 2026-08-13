@@ -17,9 +17,24 @@ class ApiClient {
 
     val json = Json { ignoreUnknownKeys = true }
 
+    // Cloudflare Access service token. Нужен, чтобы дотянуться до vpncascade/InfraHome
+    // ИЗВНЕ дома: их корень закрыт email-логином Access, а пути /api открыты отдельным
+    // приложением Access с политикой по этому токену. Пустые — заголовки не шлём
+    // (внутри LAN они не нужны, и лишний заголовок ничему не мешает, но и незачем).
+    var cfId: String = ""
+    var cfSecret: String = ""
+
+    private fun okhttp3.Request.Builder.cfAccess() = apply {
+        if (cfId.isNotEmpty() && cfSecret.isNotEmpty()) {
+            addHeader("CF-Access-Client-Id", cfId)
+            addHeader("CF-Access-Client-Secret", cfSecret)
+        }
+    }
+
     suspend fun get(url: String, token: String = ""): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
+            .cfAccess()
             .apply { if (token.isNotEmpty()) addHeader("Authorization", "Bearer $token") }
             .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
             .build()
@@ -37,6 +52,7 @@ class ApiClient {
         val request = Request.Builder()
             .url(url)
             .post(body)
+            .cfAccess()
             .apply { if (token.isNotEmpty()) addHeader("Authorization", "Bearer $token") }
             .build()
         client.newCall(request).execute().use { response ->

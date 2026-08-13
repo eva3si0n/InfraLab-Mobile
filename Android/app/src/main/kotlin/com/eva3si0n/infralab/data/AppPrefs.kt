@@ -13,6 +13,8 @@ class AppPrefs(context: Context) {
     var grafanaDatasourceUID: String by StringPref(prefs, "grafanaDatasourceUID", "prometheus")
     var homePageBaseURL: String by StringPref(prefs, "homePageBaseURL", "")
     var vpncascadeBaseURL: String by StringPref(prefs, "vpncascadeBaseURL", "")
+    // id службы Access — не секрет; секрет лежит в SecurePrefs
+    var cfAccessClientId: String by StringPref(prefs, "cfAccessClientId", "")
     var refreshIntervalSecs: Long by LongPref(prefs, "refreshIntervalSecs", 30L)
 }
 

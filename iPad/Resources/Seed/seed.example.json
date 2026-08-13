@@ -47,5 +47,7 @@
     }
   },
   "vpncascadeBaseURL": "https://vpncascade.example.tld",
-  "switchToken": "CHANGE-ME-switch-token"
+  "switchToken": "CHANGE-ME-switch-token",
+  "cfAccessClientId": "<cf-access-client-id>.access",
+  "cfAccessClientSecret": "<cf-access-client-secret>"
 }
