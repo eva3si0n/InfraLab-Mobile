@@ -264,6 +264,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // Per-segment extras from the vpncascade service (override state + WG history for the
     // sparkline), keyed by host. Best-effort; empty on any failure or when unconfigured.
+    /// Полный payload каскада одним запросом. Заменяет десяток PromQL-выборок:
+    /// логику считает сервис, приложение только рисует. null при любой ошибке.
+    suspend fun fetchCascadePayload(): CascadePayload? {
+        val base = vpncascadeBaseURL.trimEnd('/')
+        if (base.isEmpty()) return null
+        return try { api.decode<CascadePayload>(api.get("$base/api/cascade")) } catch (e: Exception) { null }
+    }
+
     suspend fun fetchCascadeAux(): Map<String, SegAux> {
         val base = vpncascadeBaseURL.trimEnd('/')
         if (base.isEmpty()) return emptyMap()

@@ -352,6 +352,19 @@ final class AppState: ObservableObject {
 
     struct SegAux { let override: String; let manual: Bool; let tx: [Double]; let rx: [Double] }
 
+    /// Полный payload каскада одним запросом. Заменяет десяток PromQL-выборок, которыми
+    /// экран собирался раньше: считает всё сервис, приложение только рисует.
+    /// nil при любой ошибке — вызывающий сам решает, показывать старое или пустоту.
+    func fetchCascadePayload() async -> CascadeAPI.Payload? {
+        let base = vpncascadeBaseURL.trimmingCharacters(in: .init(charactersIn: "/"))
+        guard !base.isEmpty, let url = URL(string: "\(base)/api/cascade") else { return nil }
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: cfRequest(url))
+            if let http = resp as? HTTPURLResponse, http.statusCode != 200 { return nil }
+            return try JSONDecoder().decode(CascadeAPI.Payload.self, from: data)
+        } catch { return nil }
+    }
+
     /// Fetch per-segment extras from the vpncascade service (manual-override state + WG
     /// throughput history for the sparkline). Best-effort; empty on any failure.
     func fetchCascadeAux() async -> [String: SegAux] {

@@ -34,7 +34,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 
 // VPN Cascade — per-segment egress state + Kuma cascade health + egress-leg traffic + migration history.
-// Data: Prometheus via Grafana proxy (vm.promInstant) + Kuma status page (vm.monitors).
+// Data: единственный источник — vpncascade GET /api/cascade (тонкий клиент).
+// Раньше экран собирался из десяти PromQL-выборок через Grafana-прокси и расходился
+// с веб-панелью при каждой её доработке.
 private val STO = Color(0xFF5CDD8B)
 private val AMS = Color(0xFFF8A532)
 private val FI = Color(0xFFDC3D46)
@@ -89,73 +91,49 @@ fun CascadeScreen(vm: AppViewModel) {
     val scope = rememberCoroutineScope()
 
     suspend fun load() {
-        if (vm.grafanaBaseURL.isEmpty()) return
+        // Один запрос вместо десяти PromQL-выборок: экран стал тонким клиентом над
+        // vpncascade. Логика (активное плечо, RTT, throughput, месячный трафик, история,
+        // здоровье узла) живёт в сервисе — том же, что рисует веб-панель, поэтому
+        // приложение и веб больше не расходятся при каждой доработке.
+        if (vm.vpncascadeBaseURL.isEmpty()) return
         loading = true
         try {
-            if (vm.monitors.isEmpty()) vm.refreshMonitors()
-            val active = vm.promInstant("vpn_egress_active_leg == 1", "")
-            val durQ = vm.promInstant("vpn_egress_active_seconds", "")
-            val rtt = vm.promInstant("vpn_leg_rtt_ms", "")
-            val txbps = vm.promInstant("sum by (host) (rate(wireguard_sent_bytes[2m]))", "")
-            val rxbps = vm.promInstant("sum by (host) (rate(wireguard_received_bytes[2m]))", "")
-            val home = vm.promInstant("home_node_rtt_ms", "")
-            val tx = vm.promInstant("vds_month_tx_bytes", "")
-            val lim = vm.promInstant("vds_month_limit_bytes", "")
-            val sw = vm.promInstant("vpn_egress_switch_time", "")
+            val p = vm.fetchCascadePayload()
+            if (p == null) { error = "vpncascade недоступен"; return }
+            error = p.error
 
             // Порядок как на веб-странице: сначала «РКН Ingress», затем домашний каскад.
-            // Задаём ЯВНО, а не порядком в seed — на вебе он тоже задан кодом. sortedBy
-            // стабильна, поэтому внутри группы порядок seed сохраняется.
-            segs = vm.cascadeSegments.sortedBy { if (it.group == "rkn") 0 else 1 }.map { cfg ->
-                val al = active.firstOrNull { it.labels["host"] == cfg.host }?.labels?.get("leg") ?: "—"
-                val ds = durQ.firstOrNull { it.labels["host"] == cfg.host }?.value ?: 0.0
-                val rm = rtt.filter { it.labels["host"] == cfg.host }
-                    .mapNotNull { r -> r.labels["leg"]?.let { it to r.value } }.toMap()
-                // Healthy = node reachability (Ping + SSH). Feature/cascade checks (FI handshake,
-                // Geo Routing, services) are shown separately and don't gate node health — FI is
-                // cold-standby, so its dead-man monitors are expected down while on STO/AMS.
-                val reach = vm.monitors.filter { it.groupName == cfg.kumaGroup && (it.name == "Ping" || it.name == "SSH") }
-                val healthy = reach.isNotEmpty() && reach.all { it.isUp }
-                val casc = vm.monitors.firstOrNull { it.groupName == "VPN Cascade" && it.name.contains(cfg.cascadeMatch) }
-                Seg(cfg.host, cfg.title, al, ds, rm,
-                    txbps.firstOrNull { it.labels["host"] == cfg.host }?.value,
-                    rxbps.firstOrNull { it.labels["host"] == cfg.host }?.value,
-                    healthy, casc)
-            }
-            // Month-to-date outbound for legs without a provider limit (e.g. FI): increase()
-            // over the node_exporter interface counter since the 1st (MSK+2), like vpncascade.
-            val netTx = mutableMapOf<String, Double>()
-            if (vm.cascadeTrafficNet.isNotEmpty()) {
-                val zone = java.time.ZoneOffset.ofHours(5) // MSK+2 (UTC+5), no DST
-                val now = java.time.ZonedDateTime.now(zone)
-                val monthStart = now.toLocalDate().withDayOfMonth(1).atStartOfDay(zone)
-                val secs = maxOf(1L, java.time.Duration.between(monthStart, now).seconds)
-                for ((leg, nt) in vm.cascadeTrafficNet) {
-                    val q = "increase(node_network_transmit_bytes_total{host=\"${nt.host}\",device=\"${nt.device}\"}[${secs}s])"
-                    vm.promInstant(q, "").firstOrNull()?.value?.let { netTx[leg] = it }
+            // sortedBy стабильна, поэтому внутри группы порядок сервиса сохраняется.
+            segs = p.segments.sortedBy { if (it.group == "rkn") 0 else 1 }.map { sg ->
+                // Вложенный монитор приезжает готовым блоком; собираем MonitorStatus,
+                // чтобы не трогать вёрстку карточки.
+                val mon = sg.cascade?.let { c ->
+                    MonitorStatus(
+                        id = 0, name = "Cascade", groupName = "VPN Cascade",
+                        isUp = c.isUp ?: false, latency = null,
+                        uptime24h = c.uptime24h ?: 0.0,
+                        recentBeats = c.recentBeats.map {
+                            KumaHeartbeat(it.status ?: 0, it.ping, it.time ?: "")
+                        }
+                    )
                 }
+                Seg(sg.host, sg.title ?: sg.host, sg.activeLeg ?: "—", sg.activeSeconds ?: 0.0,
+                    sg.rtt, sg.txBps, sg.rxBps, sg.healthy ?: false, mon)
             }
-            legs = listOf("sto", "ams", "fi").map { l ->
-                val host = vm.cascadeTrafficHosts[l] ?: ""
-                Leg(l, home.firstOrNull { it.labels["node"] == l }?.value,
-                    if (host.isEmpty()) netTx[l] else tx.firstOrNull { it.labels["host"] == host }?.value,
-                    if (host.isEmpty()) null else lim.firstOrNull { it.labels["host"] == host }?.value)
-            }
-            history = sw.mapNotNull { r ->
-                val f = r.labels["from"]; val t = r.labels["to"]; val h = r.labels["host"]
-                if (f == null || t == null || h == null) null else {
-                    val cfg = vm.cascadeSegments.firstOrNull { it.host == h }
-                    val label = cfg?.title?.substringBefore(" · ") ?: h
-                    // Группа из seed: тем же полем веб делит историю на «РКН Ingress» и
-                    // домашний каскад. Неизвестный хост считаем домашним — лучше показать
-                    // строку не в той вкладке, чем потерять совсем.
-                    Migration(h, label, f, t, r.value.toLong(), r.labels["reason"] ?: "", cfg?.group ?: "udm")
-                }
+
+            legs = p.legs.map { Leg(it.leg, it.homeRTT, it.txBytes, it.limitBytes) }
+
+            history = p.history.mapNotNull { m ->
+                val h = m.host; val f = m.from; val t = m.to; val ts = m.time
+                if (h == null || f == null || t == null || ts == null) null
+                else Migration(h, m.label ?: h, f, t, ts.toLong(), m.reason ?: "", m.group ?: "udm")
             }.sortedByDescending { it.epoch }
-            error = null
-            val aux = vm.fetchCascadeAux()
-            manual = aux.filterValues { it.manual }.mapValues { it.value.override }
-            series = aux.mapValues { it.value.tx to it.value.rx }
+
+            // Ручной пин и график throughput — из тех же сегментов, отдельная выборка
+            // fetchCascadeAux больше не нужна.
+            manual = p.segments.filter { it.manual && !it.override.isNullOrEmpty() && it.override != "auto" }
+                .associate { it.host to (it.override ?: "") }
+            series = p.segments.associate { it.host to (it.txSeries to it.rxSeries) }
         } catch (e: Exception) {
             error = e.message ?: "error"
         } finally {
@@ -168,7 +146,8 @@ fun CascadeScreen(vm: AppViewModel) {
     Scaffold(topBar = { TopAppBar(title = { Text("VPN Cascade") }) }) { padding ->
         Box(Modifier.padding(padding)) {
             when {
-                vm.grafanaBaseURL.isEmpty() -> EmptyState("Grafana Not Configured", "Set Grafana URL in Settings")
+                // Экран больше не зависит от Grafana: всё приезжает из vpncascade.
+                vm.vpncascadeBaseURL.isEmpty() -> EmptyState("VPN Cascade Not Configured", "Set VPN Cascade URL in Settings")
                 segs.isEmpty() && loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 segs.isEmpty() && error != null -> EmptyState("Failed to Load", error!!)
                 else -> BoxWithConstraints {

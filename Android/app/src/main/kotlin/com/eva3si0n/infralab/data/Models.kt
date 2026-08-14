@@ -122,6 +122,106 @@ data class SwitchResult(
     val error: String? = null
 )
 
+// Полный ответ vpncascade GET /api/cascade.
+//
+// Зачем. Раньше экран каскада собирался в приложении сам — десятком запросов PromQL через
+// Grafana-прокси. Ровно ту же логику считает сервис, и каждая новая возможность веб-панели
+// требовала отдельной реализации на трёх платформах и расходилась с вебом. Теперь клиент
+// тонкий: одна выборка, один источник правды.
+//
+// ⚠️ Поля опциональны намеренно: сервис добавляет их по ходу (paths приехали 13.08.2026),
+// и старая сборка приложения не должна падать на новом payload.
+@Serializable
+data class ApiBeat(val status: Int? = null, val ping: Double? = null, val time: String? = null)
+
+@Serializable
+data class ApiMonitorBlock(
+    val isUp: Boolean? = null,
+    val uptime24h: Double? = null,
+    val recentBeats: List<ApiBeat> = emptyList()
+)
+
+@Serializable
+data class ApiSegment(
+    val host: String,
+    val title: String? = null,
+    val label: String? = null,
+    val activeLeg: String? = null,
+    val activeSeconds: Double? = null,
+    val rtt: Map<String, Double> = emptyMap(),
+    val txBps: Double? = null,
+    val rxBps: Double? = null,
+    val healthy: Boolean? = null,
+    val cascade: ApiMonitorBlock? = null,
+    val cascadeMonitored: Boolean? = null,
+    val override: String? = null,
+    val switchLegs: List<String> = emptyList(),
+    val primaryLeg: String? = null,
+    val manual: Boolean = false,
+    val inputUp: Boolean? = null,
+    val inputAge: Double? = null,
+    val txSeries: List<Double> = emptyList(),
+    val rxSeries: List<Double> = emptyList(),
+    // "rkn" | "udm" — деки и история в вебе делятся по этому признаку
+    val group: String? = null,
+    val fqdn: String? = null,
+    val ip: String? = null
+)
+
+@Serializable
+data class ApiLeg(
+    val leg: String,
+    val homeRTT: Double? = null,
+    val txBytes: Double? = null,
+    val limitBytes: Double? = null
+)
+
+@Serializable
+data class ApiMigration(
+    val host: String? = null,
+    val label: String? = null,
+    val group: String? = null,
+    val from: String? = null,
+    val to: String? = null,
+    val time: Double? = null,
+    val reason: String? = null
+)
+
+// Транзит: через какие AS идёт путь до эндпоинта плеча (появился 13.08.2026).
+@Serializable
+data class ApiASN(
+    val num: String,
+    val name: String? = null,
+    // страна, где реально стоят ХОПЫ этой AS, а не где она зарегистрирована
+    val cc: String? = null
+)
+
+@Serializable
+data class ApiPathChange(val time: Double? = null, val asPath: String? = null)
+
+@Serializable
+data class ApiPathInfo(
+    val host: String,
+    val leg: String,
+    val asns: List<ApiASN> = emptyList(),
+    val hops: Int? = null,
+    val changedAt: Double? = null,
+    val changes: List<ApiPathChange> = emptyList(),
+    // зонд молчит — показывать обязательно, иначе читается как «путь стабилен»
+    val stale: Boolean = false
+)
+
+@Serializable
+data class CascadePayload(
+    val segments: List<ApiSegment> = emptyList(),
+    val hiddenSegments: List<ApiSegment> = emptyList(),
+    val legs: List<ApiLeg> = emptyList(),
+    val history: List<ApiMigration> = emptyList(),
+    val paths: List<ApiPathInfo> = emptyList(),
+    val error: String? = null,
+    val fetchedAt: Double? = null
+)
+
 // View of GET /api/cascade — manual-override state + WG throughput history per segment.
 @Serializable
 data class OverrideSeg(

@@ -37,9 +37,10 @@ struct CascadeView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if appState.grafanaBaseURL.isEmpty {
-                    ContentUnavailableView("Grafana Not Configured", systemImage: "arrow.triangle.branch",
-                        description: Text("Set Grafana URL in Settings"))
+                // Экран больше не зависит от Grafana: всё приезжает из vpncascade.
+                if appState.vpncascadeBaseURL.isEmpty {
+                    ContentUnavailableView("VPN Cascade Not Configured", systemImage: "arrow.triangle.branch",
+                        description: Text("Set VPN Cascade URL in Settings"))
                 } else if segs.isEmpty && loading {
                     ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let e = errText, segs.isEmpty {
@@ -370,81 +371,63 @@ struct CascadeView: View {
     }
 
     private func load() async {
-        guard !appState.grafanaBaseURL.isEmpty else { return }
+        // Один запрос вместо десяти PromQL-выборок: экран стал тонким клиентом над
+        // vpncascade. Логика (активное плечо, RTT, throughput, месячный трафик, история,
+        // здоровье узла) живёт в сервисе — том же, что рисует веб-панель, поэтому
+        // приложение и веб больше не расходятся при каждой доработке.
+        guard !appState.vpncascadeBaseURL.isEmpty else { return }
         loading = true; defer { loading = false }
-        if appState.monitors.isEmpty { await appState.refreshMonitors() }
-        do {
-            let active = try await appState.promInstant("vpn_egress_active_leg == 1", legend: "")
-            let durQ  = try await appState.promInstant("vpn_egress_active_seconds", legend: "")
-            let rtt   = try await appState.promInstant("vpn_leg_rtt_ms", legend: "")
-            let txbps = try await appState.promInstant("sum by (host) (rate(wireguard_sent_bytes[2m]))", legend: "")
-            let rxbps = try await appState.promInstant("sum by (host) (rate(wireguard_received_bytes[2m]))", legend: "")
-            let home  = try await appState.promInstant("home_node_rtt_ms", legend: "")
-            let tx    = try await appState.promInstant("vds_month_tx_bytes", legend: "")
-            let lim   = try await appState.promInstant("vds_month_limit_bytes", legend: "")
-            let sw    = try await appState.promInstant("vpn_egress_switch_time", legend: "")
 
-            // Порядок как на веб-странице: сначала группа «РКН Ingress», затем домашний
-            // каскад. Задаём ЯВНО, а не порядком в seed — на вебе он тоже задан кодом
-            // (grpBlock("rkn") перед grpBlock("udm")), и от перестановки строк в конфиге
-            // раскладка съезжать не должна. Внутри группы порядок seed сохраняем.
-            let ordered = appState.cascadeSegments.enumerated().sorted { a, b in
-                let ra = a.element.group == "rkn" ? 0 : 1
-                let rb = b.element.group == "rkn" ? 0 : 1
-                return ra == rb ? a.offset < b.offset : ra < rb
-            }.map(\.element)
-            segs = ordered.map { cfg in
-                let al = active.first { $0.labels["host"] == cfg.host }?.labels["leg"] ?? "—"
-                let ds = durQ.first { $0.labels["host"] == cfg.host }?.value ?? 0
-                var rm: [String: Double] = [:]
-                for r in rtt where r.labels["host"] == cfg.host { if let l = r.labels["leg"] { rm[l] = r.value } }
-                // Healthy = node reachability (Ping + SSH). Feature/cascade checks (FI handshake,
-                // Geo Routing, services) are shown separately and don't gate node health — FI is
-                // cold-standby, so its dead-man monitors are expected down while on STO/AMS.
-                let reach = appState.monitors.filter { $0.groupName == cfg.kumaGroup && ($0.name == "Ping" || $0.name == "SSH") }
-                let healthy = !reach.isEmpty && reach.allSatisfy { $0.isUp }
-                let casc = appState.monitors.first { $0.groupName == "VPN Cascade" && $0.name.contains(cfg.cascadeMatch) }
-                return Seg(host: cfg.host, title: cfg.title, activeLeg: al, activeSeconds: ds, rtt: rm,
-                           txBps: txbps.first { $0.labels["host"] == cfg.host }?.value,
-                           rxBps: rxbps.first { $0.labels["host"] == cfg.host }?.value,
-                           healthy: healthy, cascade: casc)
-            }
-            // Month-to-date outbound for legs without a provider limit (e.g. FI): increase()
-            // over the node_exporter interface counter since the 1st (MSK+2), like vpncascade.
-            var netTx: [String: Double] = [:]
-            if !appState.cascadeTrafficNet.isEmpty {
-                var cal = Calendar(identifier: .gregorian)
-                cal.timeZone = TimeZone(secondsFromGMT: 5 * 3600) ?? .current
-                let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
-                let secs = max(1, Int(Date().timeIntervalSince(monthStart)))
-                for (leg, nt) in appState.cascadeTrafficNet {
-                    let q = "increase(node_network_transmit_bytes_total{host=\"\(nt.host)\",device=\"\(nt.device)\"}[\(secs)s])"
-                    if let rows = try? await appState.promInstant(q, legend: ""), let v = rows.first?.value {
-                        netTx[leg] = v
-                    }
-                }
-            }
-            legs = ["sto", "ams", "fi"].map { l in
-                let host = appState.cascadeTrafficHosts[l] ?? ""
-                return Leg(leg: l, homeRTT: home.first { $0.labels["node"] == l }?.value,
-                           txBytes: host.isEmpty ? netTx[l] : tx.first { $0.labels["host"] == host }?.value,
-                           limitBytes: host.isEmpty ? nil : lim.first { $0.labels["host"] == host }?.value)
-            }
-            history = sw.compactMap { r -> Migration? in
-                guard let f = r.labels["from"], let t = r.labels["to"], let h = r.labels["host"] else { return nil }
-                // Группа берётся из seed по хосту — тем же полем веб делит историю на
-                // «РКН Ingress» и домашний каскад. Неизвестный хост считаем домашним:
-                // лучше показать строку не в той вкладке, чем потерять её совсем.
-                let g = appState.cascadeSegments.first { $0.host == h }?.group ?? "udm"
-                return Migration(host: h, from: f, to: t, time: Date(timeIntervalSince1970: r.value), reason: r.labels["reason"] ?? "", group: g)
-            }.sorted { $0.time > $1.time }
-            errText = nil
-        } catch let e {
-            errText = e.localizedDescription
+        guard let p = await appState.fetchCascadePayload() else {
+            errText = "vpncascade недоступен"
+            return
         }
-        let aux = await appState.fetchCascadeAux()
-        manual = aux.filter { $0.value.manual }.mapValues { $0.override }
-        series = aux.mapValues { (tx: $0.tx, rx: $0.rx) }
+        errText = p.error
+
+        // Порядок как на веб-странице: сначала «РКН Ingress», затем домашний каскад.
+        // Группу берём из payload, а не из seed — сервис теперь её и определяет.
+        let ordered = (p.segments ?? []).enumerated().sorted { a, b in
+            let ra = (a.element.group == "rkn") ? 0 : 1
+            let rb = (b.element.group == "rkn") ? 0 : 1
+            return ra == rb ? a.offset < b.offset : ra < rb
+        }.map(\.element)
+
+        segs = ordered.map { sg in
+            // Вложенный монитор каскада приезжает готовым блоком; собираем из него
+            // MonitorStatus, чтобы не трогать вёрстку карточки.
+            let mon: MonitorStatus? = sg.cascade.map { c in
+                MonitorStatus(id: 0, name: "Cascade", groupName: "VPN Cascade",
+                              isUp: c.isUp ?? false, latency: nil,
+                              uptime24h: c.uptime24h ?? 0,
+                              recentBeats: (c.recentBeats ?? []).map {
+                                  KumaHeartbeat(status: $0.status ?? 0, ping: $0.ping, time: $0.time ?? "")
+                              })
+            }
+            return Seg(host: sg.host, title: sg.title ?? sg.host,
+                       activeLeg: sg.activeLeg ?? "—", activeSeconds: sg.activeSeconds ?? 0,
+                       rtt: sg.rtt ?? [:], txBps: sg.txBps, rxBps: sg.rxBps,
+                       healthy: sg.healthy ?? false, cascade: mon)
+        }
+
+        legs = (p.legs ?? []).map { Leg(leg: $0.leg, homeRTT: $0.homeRTT,
+                                        txBytes: $0.txBytes, limitBytes: $0.limitBytes) }
+
+        history = (p.history ?? []).compactMap { m -> Migration? in
+            guard let h = m.host, let f = m.from, let t = m.to, let ts = m.time else { return nil }
+            return Migration(host: h, from: f, to: t, time: Date(timeIntervalSince1970: ts),
+                             reason: m.reason ?? "", group: m.group ?? "udm")
+        }.sorted { $0.time > $1.time }
+
+        // Ручной пин и график throughput — из тех же сегментов, отдельная выборка
+        // fetchCascadeAux больше не нужна.
+        var man: [String: String] = [:]
+        var ser: [String: (tx: [Double], rx: [Double])] = [:]
+        for sg in (p.segments ?? []) {
+            if sg.manual == true, let o = sg.override, !o.isEmpty, o != "auto" { man[sg.host] = o }
+            ser[sg.host] = (tx: sg.txSeries ?? [], rx: sg.rxSeries ?? [])
+        }
+        manual = man
+        series = ser
     }
 }
 
