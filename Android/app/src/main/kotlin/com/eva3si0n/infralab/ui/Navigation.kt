@@ -19,6 +19,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.eva3si0n.infralab.ui.cascade.CascadeScreen
+import com.eva3si0n.infralab.ui.cascade.PathsScreen
 import com.eva3si0n.infralab.ui.homepage.HomePageScreen
 import com.eva3si0n.infralab.ui.metrics.MetricsScreen
 import com.eva3si0n.infralab.ui.monitors.MonitorsScreen
@@ -62,7 +63,10 @@ fun AppNavigation(vm: AppViewModel) {
     }) { padding ->
         NavHost(nav, startDestination = "monitors", modifier = Modifier.padding(padding)) {
             composable("monitors") { MonitorsScreen(vm) }
-            composable("cascade") { CascadeScreen(vm) }
+            // Транзит — отдельный маршрут, а не шестая вкладка: нижняя панель на пять
+            // пунктов и так плотная, а у экрана своя логика чтения (как и в вебе).
+            composable("cascade") { CascadeScreen(vm, onOpenPaths = { nav.navigate("paths") }) }
+            composable("paths") { PathsScreen(vm, onBack = { nav.popBackStack() }) }
             composable("metrics") { MetricsScreen(vm) }
             composable("homepage") { HomePageScreen(vm) }
             composable("settings") { SettingsScreen(vm) }

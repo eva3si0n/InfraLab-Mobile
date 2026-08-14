@@ -28,7 +28,8 @@ struct CascadeView: View {
     @State private var switching = false
     @State private var switchNote: String?
     @State private var manual: [String: String] = [:]   // host → forced leg while in manual mode
-    @State private var series: [String: (tx: [Double], rx: [Double])] = [:]  // host → WG history
+    @State private var series: [String: (tx: [Double], rx: [Double])] = [:]
+    @State private var paths: [CascadeAPI.PathInfo] = []  // host → WG history
 
     private let cascadeHint = "up — активное плечо STO/AMS (чистый Vultr-egress); down — деградация на FI (оба Vultr-плеча недоступны) или несвежий handshake."
     private let egressHint = "Лимит Vultr 2 ТБ на инстанс (STO и AMS отдельно), считается outbound (tx), сброс 1-го числа. FI — cold standby, квота не отслеживается."
@@ -50,12 +51,35 @@ struct CascadeView: View {
         .task { await load() }
     }
 
+    /// Транзит — отдельным экраном, а не секцией в общей ленте: у него своя логика
+    /// чтения, и мешать её с оперативной картиной каскада незачем (так же сделано в
+    /// вебе). Шестой вкладкой не делаем — на iPhone она уехала бы в «More».
+    /// 🪤 Отдельным СВОЙСТВОМ, а не строкой внутри egressSection: тело вычисляемого
+    /// свойства не @ViewBuilder, и два выражения подряд там не компилируются.
+    private var pathsSection: some View {
+        Section {
+            NavigationLink { CascadePathsView(paths: paths) } label: {
+                HStack {
+                    Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Транзит — AS-путь до плеч")
+                        Text(paths.isEmpty ? "нет данных" : "\(paths.count) плеч(а) под наблюдением")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .disabled(paths.isEmpty)
+        }
+    }
+
     private var list: some View {
         List {
             if !manual.isEmpty { manualBanner }
             decisionSection
             ForEach(segs) { segmentSection($0) }
             egressSection
+            pathsSection
             historySection
         }
         .listStyle(.insetGrouped)
@@ -425,6 +449,7 @@ struct CascadeView: View {
         }
         manual = man
         series = ser
+        paths = p.paths ?? []
     }
 }
 

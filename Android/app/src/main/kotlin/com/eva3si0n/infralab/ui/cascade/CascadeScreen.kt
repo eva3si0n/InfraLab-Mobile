@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,7 +78,7 @@ private data class Migration(val host: String, val label: String, val from: Stri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CascadeScreen(vm: AppViewModel) {
+fun CascadeScreen(vm: AppViewModel, onOpenPaths: () -> Unit = {}) {
     var segs by remember { mutableStateOf<List<Seg>>(emptyList()) }
     var legs by remember { mutableStateOf<List<Leg>>(emptyList()) }
     var history by remember { mutableStateOf<List<Migration>>(emptyList()) }
@@ -158,6 +160,26 @@ fun CascadeScreen(vm: AppViewModel) {
                     val groupW = cardW * 2 + 12.dp
                     PullToRefreshBox(isRefreshing = loading, onRefresh = { scope.launch { load() } }) {
                         LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Транзит — отдельным экраном, а не секцией здесь: у него своя
+                            // логика чтения, и мешать её с оперативной картиной каскада незачем.
+                            item(key = "pathsLink") {
+                                ElevatedCard(onClick = onOpenPaths, modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        Modifier.padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("Транзит — AS-путь до плеч",
+                                                style = MaterialTheme.typography.titleSmall)
+                                            Text("через какие AS идёт путь до каждого плеча",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Spacer(Modifier.weight(1f))
+                                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+                                    }
+                                }
+                            }
                             if (manual.isNotEmpty()) item(key = "manual") {
                                 val txt = manual.entries.joinToString("; ") { (h, leg) ->
                                     val lbl = vm.cascadeSegments.firstOrNull { it.host == h }?.title?.substringBefore(" · ") ?: h
