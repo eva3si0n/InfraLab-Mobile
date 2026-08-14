@@ -81,10 +81,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // applyCfAccess ПОСЛЕ сида: на первом запуске креденшелы приезжают из seed, и без
     // повторного прокидывания http-клиент остался бы без заголовков до перезапуска.
-    init { seedFromAssetsIfNeeded(); loadCascadeConfig(); applyCfAccess() }
+    init { seedCfAccessAlways(); seedFromAssetsIfNeeded(); loadCascadeConfig(); applyCfAccess() }
 
     // Pre-fill Settings from a bundled assets/seed.json on first launch (personal builds).
     // The file is gitignored — never committed; absent in public clones (then no-op).
+    /// Креденшелы Cloudflare Access применяем ВСЕГДА, а не только на чистой установке.
+    /// 🪤 Иначе на устройстве с уже настроенным приложением они не приезжают: seed
+    /// ниже выходит раньше, если хоть один адрес задан. Ровно так и вышло 14.08.2026 —
+    /// после обновления Cascade и InfraHome показывали «Failed to Load», потому что
+    /// запросы уходили без заголовков и Access отвечал 403. Это не пользовательская
+    /// настройка, а часть сборки: её же обновление закроет и будущую ротацию токена.
+    private fun seedCfAccessAlways() {
+        runCatching {
+            val txt = getApplication<Application>().assets.open("seed.json").bufferedReader().use { it.readText() }
+            val s = api.json.decodeFromString<SeedConfig>(txt)
+            val id = s.cfAccessClientId; val sec = s.cfAccessClientSecret
+            if (!id.isNullOrEmpty() && !sec.isNullOrEmpty()) setCfAccess(id, sec)
+        }
+    }
+
     private fun seedFromAssetsIfNeeded() {
         if (kumaBaseURL.isNotEmpty() || grafanaBaseURL.isNotEmpty() || homePageBaseURL.isNotEmpty()) return
         runCatching {

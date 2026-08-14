@@ -5,12 +5,14 @@ struct SettingsView: View {
 
     @State private var kumaKeyInput = ""
     @State private var grafanaTokenInput = ""
+    @State private var cfSecretInput = ""
 
     var body: some View {
         Form {
             kumaSection
             grafanaSection
             homePageSection
+            cfAccessSection
             generalSection
             actionsSection
             aboutSection
@@ -76,6 +78,24 @@ struct SettingsView: View {
             Label("InfraHome", systemImage: "square.grid.2x2")
         } footer: {
             Text("Shown as a full-screen web page in the app")
+        }
+    }
+
+    /// Cloudflare Access: без этих креденшелов Cascade и InfraHome работают только
+    /// внутри дома, а снаружи ловят 403 — их пути закрыты Access. Обычно приезжают из
+    /// seed вместе со сборкой; поля здесь на случай ротации токена и для проверки,
+    /// что они вообще заданы.
+    private var cfAccessSection: some View {
+        Section {
+            TextField("client-id.access", text: $appState.cfAccessClientId)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            tokenField(placeholder: "Client Secret", input: $cfSecretInput,
+                       isSaved: !appState.cfAccessClientSecret.isEmpty)
+        } header: {
+            Label("Cloudflare Access", systemImage: "key.horizontal")
+        } footer: {
+            Text("Service token для доступа к Cascade и InfraHome вне домашней сети")
         }
     }
 
@@ -145,6 +165,7 @@ struct SettingsView: View {
     }
 
     private func saveTokens() {
+        if !cfSecretInput.isEmpty { appState.cfAccessClientSecret = cfSecretInput; cfSecretInput = "" }
         if !kumaKeyInput.isEmpty { appState.kumaAPIKey = kumaKeyInput; kumaKeyInput = "" }
         if !grafanaTokenInput.isEmpty { appState.grafanaToken = grafanaTokenInput; grafanaTokenInput = "" }
     }

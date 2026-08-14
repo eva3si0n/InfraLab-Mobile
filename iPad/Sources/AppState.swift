@@ -118,10 +118,16 @@ final class AppState: ObservableObject {
     }
 
     private func seedFromBundleIfNeeded() {
-        guard !isConfigured else { return }
         guard let url = Bundle.main.url(forResource: "seed", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let s = try? JSONDecoder().decode(SeedConfig.self, from: data) else { return }
+        // Креденшелы Cloudflare Access применяем ВСЕГДА, до проверки isConfigured.
+        // 🪤 Иначе на устройстве с уже настроенным приложением они не приезжают, и
+        // Cascade с InfraHome ловят 403 — так и вышло 14.08.2026 после обновления.
+        // Это не пользовательская настройка, а часть сборки; заодно закрывает ротацию.
+        if let v = s.cfAccessClientId, !v.isEmpty { cfAccessClientId = v }
+        if let v = s.cfAccessClientSecret, !v.isEmpty { cfAccessClientSecret = v }
+        guard !isConfigured else { return }
         if let v = s.kumaBaseURL { kumaBaseURL = v }
         if let v = s.kumaSlug { kumaSlug = v }
         if let v = s.grafanaBaseURL { grafanaBaseURL = v }
