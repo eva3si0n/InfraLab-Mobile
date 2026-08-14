@@ -73,7 +73,7 @@ struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
         } header: {
-            Label("HomePage", systemImage: "house")
+            Label("InfraHome", systemImage: "square.grid.2x2")
         } footer: {
             Text("Shown as a full-screen web page in the app")
         }

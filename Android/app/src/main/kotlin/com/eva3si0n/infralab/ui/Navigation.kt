@@ -3,6 +3,7 @@ package com.eva3si0n.infralab.ui
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.automirrored.filled.AltRoute
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Home
@@ -20,7 +21,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.eva3si0n.infralab.ui.cascade.CascadeScreen
 import com.eva3si0n.infralab.ui.cascade.PathsScreen
-import com.eva3si0n.infralab.ui.homepage.HomePageScreen
+import com.eva3si0n.infralab.ui.homepage.InfraHomeScreen
 import com.eva3si0n.infralab.ui.metrics.MetricsScreen
 import com.eva3si0n.infralab.ui.monitors.MonitorsScreen
 import com.eva3si0n.infralab.ui.settings.SettingsScreen
@@ -31,7 +32,7 @@ private val tabs = listOf(
     Tab("monitors", "Monitors", Icons.Default.Sensors),
     Tab("cascade", "Cascade", Icons.AutoMirrored.Filled.AltRoute),
     Tab("metrics", "Metrics", Icons.Default.BarChart),
-    Tab("homepage", "HomePage", Icons.Default.Home),
+    Tab("homepage", "InfraHome", Icons.Default.GridView),
     Tab("settings", "Settings", Icons.Default.Settings),
 )
 
@@ -68,7 +69,7 @@ fun AppNavigation(vm: AppViewModel) {
             composable("cascade") { CascadeScreen(vm, onOpenPaths = { nav.navigate("paths") }) }
             composable("paths") { PathsScreen(vm, onBack = { nav.popBackStack() }) }
             composable("metrics") { MetricsScreen(vm) }
-            composable("homepage") { HomePageScreen(vm) }
+            composable("homepage") { InfraHomeScreen(vm) }
             composable("settings") { SettingsScreen(vm) }
         }
     }

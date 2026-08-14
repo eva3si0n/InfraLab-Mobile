@@ -14,8 +14,8 @@ struct ContentView: View {
             MetricsView()
                 .tabItem { Label("Metrics", systemImage: "chart.xyaxis.line") }
 
-            HomePageView()
-                .tabItem { Label("HomePage", systemImage: "house") }
+            InfraHomeView()
+                .tabItem { Label("InfraHome", systemImage: "square.grid.2x2") }
 
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gear") }

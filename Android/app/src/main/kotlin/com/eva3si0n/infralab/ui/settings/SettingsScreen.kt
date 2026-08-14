@@ -82,8 +82,8 @@ fun SettingsScreen(viewModel: AppViewModel) {
                 )
             }
 
-            // HomePage
-            SettingsCard(title = "HomePage") {
+            // InfraHome
+            SettingsCard(title = "InfraHome") {
                 UrlField("Base URL", viewModel.homePageBaseURL, viewModel::updateHomePageBaseURL)
                 Spacer(Modifier.height(4.dp))
                 Text(

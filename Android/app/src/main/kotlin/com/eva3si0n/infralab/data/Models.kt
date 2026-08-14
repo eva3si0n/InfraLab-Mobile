@@ -277,3 +277,68 @@ data class MetricSeries(val name: String, val points: List<MetricPoint>)
 data class InstantRow(val name: String, val value: Double, val labels: Map<String, String>)
 
 fun JsonElement.toDoubleOrNull(): Double? = this.jsonPrimitive.content.toDoubleOrNull()
+
+// Ответ InfraHome GET /api/home — тот же источник, что рисует веб-дашборд.
+// Раньше раздел был web-view на gethomepage: внутри встроенного браузера Cloudflare
+// Access просил логин, а на телефоне это неудобно. Теперь экран нативный и ходит по API
+// с service token, как и каскад.
+// ⚠️ Поля опциональны: состав плиток задаётся конфигом сервиса и меняется.
+@Serializable
+data class HomeMetric(
+    val label: String? = null,
+    val text: String? = null,
+    val ok: Boolean? = null,
+    val group: String? = null,
+    val note: String? = null,
+    val state: String? = null          // "ok" | "warn" | "crit"
+)
+
+@Serializable
+data class HomeTile(
+    val name: String? = null,
+    val href: String? = null,
+    val description: String? = null,
+    val accent: String? = null,
+    val badge: String? = null,
+    val status: String? = null,        // "ok" | "warn" | "crit"
+    val metrics: List<HomeMetric> = emptyList()
+)
+
+@Serializable
+data class HomeGroup(
+    val name: String? = null,
+    val framed: Boolean? = null,
+    // свёрнутость берём с веба, чтобы длинный дашборд не разворачивался на телефоне целиком
+    val collapsed: Boolean = false,
+    val tiles: List<HomeTile> = emptyList()
+)
+
+@Serializable
+data class HomeKuma(
+    val up: Int = 0, val down: Int = 0, val pending: Int = 0,
+    val maintenance: Int = 0, val total: Int = 0
+)
+
+@Serializable
+data class HomeAlert(
+    val name: String? = null,
+    val severity: String? = null,
+    val state: String? = null,
+    val summary: String? = null
+)
+
+@Serializable
+data class HomeAlerts(
+    val firing: Int = 0,
+    val pending: Int = 0,
+    val list: List<HomeAlert> = emptyList()
+)
+
+@Serializable
+data class InfraHomePayload(
+    val generatedAt: Double? = null,
+    val title: String? = null,
+    val groups: List<HomeGroup> = emptyList(),
+    val kuma: HomeKuma? = null,
+    val alerts: HomeAlerts? = null
+)

@@ -352,6 +352,18 @@ final class AppState: ObservableObject {
 
     struct SegAux { let override: String; let manual: Bool; let tx: [Double]; let rx: [Double] }
 
+    /// Витрина InfraHome одним запросом. Тот же источник, что рисует веб-дашборд.
+    /// Снаружи дома путь закрыт Cloudflare Access — идём с заголовками service token.
+    func fetchInfraHome() async -> InfraHomeAPI.Payload? {
+        let base = homePageBaseURL.trimmingCharacters(in: .init(charactersIn: "/"))
+        guard !base.isEmpty, let url = URL(string: "\(base)/api/home") else { return nil }
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: cfRequest(url))
+            if let http = resp as? HTTPURLResponse, http.statusCode != 200 { return nil }
+            return try JSONDecoder().decode(InfraHomeAPI.Payload.self, from: data)
+        } catch { return nil }
+    }
+
     /// Полный payload каскада одним запросом. Заменяет десяток PromQL-выборок, которыми
     /// экран собирался раньше: считает всё сервис, приложение только рисует.
     /// nil при любой ошибке — вызывающий сам решает, показывать старое или пустоту.

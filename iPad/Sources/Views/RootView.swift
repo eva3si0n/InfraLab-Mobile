@@ -4,7 +4,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case monitors = "Monitors"
     case cascade = "Cascade"
     case metrics = "Metrics"
-    case homePage = "HomePage"
+    case homePage = "InfraHome"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -14,7 +14,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .monitors: return "dot.radiowaves.up.forward"
         case .cascade:  return "arrow.triangle.branch"
         case .metrics:  return "chart.xyaxis.line"
-        case .homePage: return "house"
+        case .homePage: return "square.grid.2x2"
         case .settings: return "gear"
         }
     }
@@ -44,7 +44,7 @@ struct RootView: View {
             case .metrics:
                 NavigationStack { MetricsView() }
             case .homePage:
-                HomePageView()
+                InfraHomeView()
             case .settings:
                 SettingsView()
             case nil:

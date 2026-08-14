@@ -264,6 +264,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // Per-segment extras from the vpncascade service (override state + WG history for the
     // sparkline), keyed by host. Best-effort; empty on any failure or when unconfigured.
+    /// Витрина InfraHome одним запросом. Снаружи дома путь закрыт Cloudflare Access —
+    /// заголовки service token добавляет сам ApiClient.
+    suspend fun fetchInfraHome(): InfraHomePayload? {
+        val base = homePageBaseURL.trimEnd('/')
+        if (base.isEmpty()) return null
+        return try { api.decode<InfraHomePayload>(api.get("$base/api/home")) } catch (e: Exception) { null }
+    }
+
     /// Полный payload каскада одним запросом. Заменяет десяток PromQL-выборок:
     /// логику считает сервис, приложение только рисует. null при любой ошибке.
     suspend fun fetchCascadePayload(): CascadePayload? {
